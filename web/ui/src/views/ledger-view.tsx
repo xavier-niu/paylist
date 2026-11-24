@@ -19,7 +19,7 @@ import { t, tn } from "@/lib/i18n"
 
 const plain = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false })
 
-/** A text cell that saves when it loses focus or on Enter; Escape puts it back. */
+/** A text cell that saves when it loses focus, on Enter or on Escape. */
 function TextCell({ value, onSave, label, className }: { value: string; onSave: (v: string) => Promise<boolean>; label: string; className?: string }) {
   const [text, setText] = useState(value)
   useEffect(() => setText(value), [value])
@@ -35,10 +35,8 @@ function TextCell({ value, onSave, label, className }: { value: string; onSave: 
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter") (e.target as HTMLInputElement).blur()
-        if (e.key === "Escape") {
-          setText(value)
-          requestAnimationFrame(() => (e.target as HTMLInputElement).blur())
-        }
+        // Escape finishes editing too, keeping what was typed (the blur saves it).
+        if (e.key === "Escape") (e.target as HTMLInputElement).blur()
       }}
     />
   )
@@ -74,10 +72,7 @@ function AmountCell({ value, onSave, label = t("Amount") }: { value: number; onS
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === "Enter") (e.target as HTMLInputElement).blur()
-        if (e.key === "Escape") {
-          setText(plain.format(value))
-          requestAnimationFrame(() => (e.target as HTMLInputElement).blur())
-        }
+        if (e.key === "Escape") (e.target as HTMLInputElement).blur()
       }}
     />
   )
@@ -568,7 +563,7 @@ function Draft({ month, onAdded, onDone }: { month: string; onAdded: (e: Entry) 
   const nameRef = useRef<HTMLInputElement>(null)
   useEffect(() => nameRef.current?.focus(), [])
 
-  const add = async () => {
+  const add = async (thenClose = false) => {
     if (busy) return
     const n = parseAmount(amount)
     if (!name.trim()) {
@@ -586,7 +581,8 @@ function Draft({ month, onAdded, onDone }: { month: string; onAdded: (e: Entry) 
       setAmount("")
       if (e.date.startsWith(month)) onAdded(e)
       else toast.success(t("Added {name} to {month}.", { name: e.name, month: monthLabel(e.date.slice(0, 7)) }))
-      nameRef.current?.focus()
+      if (thenClose) onDone()
+      else nameRef.current?.focus()
     } catch (err) {
       toast.error((err as Error).message)
     } finally {
@@ -598,7 +594,11 @@ function Draft({ month, onAdded, onDone }: { month: string; onAdded: (e: Entry) 
       e.preventDefault()
       void add()
     }
-    if (e.key === "Escape") onDone()
+    // Escape adds what's been filled in, then closes the row; an empty row just closes.
+    if (e.key === "Escape") {
+      if (name.trim() && Number.isFinite(parseAmount(amount))) void add(true)
+      else onDone()
+    }
   }
 
   return (

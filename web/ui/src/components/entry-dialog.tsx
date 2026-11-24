@@ -120,12 +120,13 @@ export function EntryDialog({
 
   const onNameKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.nativeEvent.isComposing) return
+    // The arrows go round the suggestions, as in the type and card lists.
     if (showSuggestions && e.key === "ArrowDown") {
       e.preventDefault()
-      setActive((a) => Math.min(a + 1, suggestions.length - 1))
+      setActive((a) => (a + 1) % suggestions.length)
     } else if (showSuggestions && e.key === "ArrowUp") {
       e.preventDefault()
-      setActive((a) => Math.max(a - 1, -1))
+      setActive((a) => (a <= 0 ? suggestions.length - 1 : a - 1))
     } else if (e.key === "Enter") {
       if (showSuggestions && active >= 0) {
         e.preventDefault()
@@ -144,6 +145,8 @@ export function EntryDialog({
   const ready = refund
     ? name.trim() !== "" && Number.isFinite(n) && n !== 0 && type !== "" && card !== "" && date !== ""
     : name.trim() !== "" && Number.isFinite(n)
+
+  const changed = !!entry && (name !== entry.name || n !== entry.amount || type !== entry.type || card !== entry.card || date !== entry.date)
 
   const matchKey = `${name.trim().toLowerCase()}|${Number.isFinite(n) ? Math.abs(n) : ""}`
   useEffect(() => {
@@ -195,8 +198,8 @@ export function EntryDialog({
   }
 
   // Adding keeps the form open for the next entry (same date and card); saving a change closes it.
-  const save = async (e: FormEvent) => {
-    e.preventDefault()
+  const save = async (e?: FormEvent) => {
+    e?.preventDefault()
     if (!ready || busy || (refund && !matchesReady)) return
     setBusy(true)
     try {
@@ -253,10 +256,13 @@ export function EntryDialog({
       <DialogContent
         className="gap-0 overflow-hidden rounded-[20px] border-0 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3),0_0_0_1px_var(--rule-2)] ring-0 sm:max-w-[500px]"
         onEscapeKeyDown={(e) => {
-          // Escape closes the suggestions first, then the form.
+          // Escape closes the suggestions first, then the form; changes to an entry are saved on the way out.
           if (showSuggestions) {
             e.preventDefault()
             setSuggesting(false)
+          } else if (entry && changed && ready) {
+            e.preventDefault()
+            void save()
           }
         }}
       >

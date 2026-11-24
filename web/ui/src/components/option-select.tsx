@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { CheckIcon } from "lucide-react"
 
 import { useConfirm } from "@/components/confirm"
@@ -43,6 +43,11 @@ export function OptionSelect({
   const [query, setQuery] = useState("")
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  // Keep the active row in view as the arrows move it, wrapping round included.
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" })
+  }, [active])
 
   const current = options.find((o) => o.name.toLowerCase() === value.toLowerCase())
   const q = query.trim().toLowerCase()
@@ -79,12 +84,13 @@ export function OptionSelect({
     else pick("")
   }
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
+    // The arrows go round: up from the first row to the last, down from the last to the first.
+    if (e.key === "ArrowDown" && rows.length) {
       e.preventDefault()
-      setActive((a) => Math.min(a + 1, rows.length - 1))
-    } else if (e.key === "ArrowUp") {
+      setActive((a) => (a + 1) % rows.length)
+    } else if (e.key === "ArrowUp" && rows.length) {
       e.preventDefault()
-      setActive((a) => Math.max(a - 1, 0))
+      setActive((a) => (a - 1 + rows.length) % rows.length)
     } else if (e.key === "Enter") {
       e.preventDefault()
       choose(active)
@@ -127,7 +133,7 @@ export function OptionSelect({
             className="h-10 w-full border-b border-rule bg-transparent px-3.5 text-[14px] outline-none placeholder:text-muted-foreground"
             maxLength={40}
           />
-          <div className="max-h-64 overflow-y-auto py-1" role="listbox" aria-label={label}>
+          <div ref={listRef} className="max-h-64 overflow-y-auto py-1" role="listbox" aria-label={label}>
                       {rows.length === 0 && <p className="px-3 py-2 text-[13px] text-muted-foreground">{kind === "type" ? t("No types yet. Type a name.") : t("No cards yet. Type a name.")}</p>}
             {rows.map((r, i) => (
               <button
