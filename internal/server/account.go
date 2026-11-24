@@ -39,6 +39,10 @@ func (s *Server) handlePrefs(w http.ResponseWriter, r *http.Request) {
 	if req.Language == "system" || req.Language == "en" || req.Language == "zh" {
 		p.Language = req.Language
 	}
+	switch req.LedgerOrder {
+	case "date-asc", "date-desc", "amount-desc", "amount-asc", "name":
+		p.LedgerOrder = req.LedgerOrder
+	}
 	p, err := s.opts.Store.UpdatePrefs(r.Context(), u.ID, p)
 	if err != nil {
 		s.internalError(w, err)

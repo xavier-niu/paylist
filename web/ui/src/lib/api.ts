@@ -4,10 +4,14 @@ import type { Attachment } from "@/lib/attachments"
 import { lang, locale, t, type LangPref } from "@/lib/i18n"
 
 
+/** How the ledger sorts a month. */
+export type LedgerOrder = "date-asc" | "date-desc" | "amount-desc" | "amount-asc" | "name"
+
 export interface Prefs {
   currency: string
   theme: "system" | "light" | "dark"
   language: LangPref
+  ledger_order: LedgerOrder
 }
 
 export interface User {

@@ -405,3 +405,28 @@ func TestAgentChat(t *testing.T) {
 		t.Errorf("delete chat: %d", code)
 	}
 }
+
+func TestPrefs(t *testing.T) {
+	e := newEnv(t)
+	c := e.signIn(t, "prefs@example.com")
+	p := decodeJSON[store.Prefs](t, e.do(t, c, "PUT", "/api/me/prefs", map[string]any{}))
+	if p.Currency != "CNY" || p.Theme != "system" || p.Language != "system" || p.LedgerOrder != "date-asc" {
+		t.Errorf("defaults: %+v", p)
+	}
+	// Only what's sent changes, and only to something allowed.
+	p = decodeJSON[store.Prefs](t, e.do(t, c, "PUT", "/api/me/prefs", map[string]any{"ledger_order": "amount-desc", "language": "zh"}))
+	if p.LedgerOrder != "amount-desc" || p.Language != "zh" || p.Currency != "CNY" {
+		t.Errorf("saved: %+v", p)
+	}
+	p = decodeJSON[store.Prefs](t, e.do(t, c, "PUT", "/api/me/prefs", map[string]any{"ledger_order": "sideways", "currency": "usd"}))
+	if p.LedgerOrder != "amount-desc" || p.Currency != "USD" {
+		t.Errorf("a bad order: %+v", p)
+	}
+	// It comes back with the account.
+	me := decodeJSON[struct {
+		User store.User `json:"user"`
+	}](t, e.do(t, c, "GET", "/api/me", nil))
+	if me.User.Prefs.LedgerOrder != "amount-desc" {
+		t.Errorf("me: %+v", me.User.Prefs)
+	}
+}

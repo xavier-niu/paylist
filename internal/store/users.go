@@ -35,6 +35,8 @@ type Prefs struct {
 	Currency string `json:"currency"` // ISO 4217 code used to format amounts, e.g. "CNY" or "USD"
 	Theme    string `json:"theme"`    // "system" (follow the device), "light" or "dark"
 	Language string `json:"language"` // "system" (follow the browser), "en" or "zh"
+	// LedgerOrder is how the ledger sorts a month: date-asc, date-desc, amount-desc, amount-asc or name.
+	LedgerOrder string `json:"ledger_order"`
 }
 
 func (p Prefs) withDefaults() Prefs {
@@ -46,6 +48,9 @@ func (p Prefs) withDefaults() Prefs {
 	}
 	if p.Language == "" {
 		p.Language = "system"
+	}
+	if p.LedgerOrder == "" {
+		p.LedgerOrder = "date-asc"
 	}
 	return p
 }

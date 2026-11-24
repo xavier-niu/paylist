@@ -1,16 +1,17 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
-import { ChevronsUpDownIcon, DownloadIcon, EllipsisIcon, PlusIcon, SearchIcon, Trash2Icon, Undo2Icon } from "lucide-react"
+import { ArrowUpDownIcon, DownloadIcon, ListFilterIcon, EllipsisIcon, PlusIcon, SearchIcon, Trash2Icon, Undo2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
 import { parseAmount } from "@/components/entry-dialog"
+import { FilterLine, isActive, newFilter, passes, SortLine, ToolbarToggle, type Filter } from "@/components/ledger-filters"
 import { MonthHeading } from "@/components/month-picker"
 import { OptionSelect, Tag } from "@/components/option-select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Loading, Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
-import { api, compareLabel, currencySymbol, dateLabel, money, monthLabel, monthName, plainAmount, shiftMonth, thisMonth, today, type Entry, type EntryInput, type Stats } from "@/lib/api"
+import { api, compareLabel, currencySymbol, dateLabel, money, monthLabel, monthName, plainAmount, shiftMonth, thisMonth, today, type Entry, type EntryInput, type LedgerOrder, type Stats } from "@/lib/api"
 import { Money } from "@/lib/money"
 import { optionColor, useApp } from "@/lib/state"
 import { matches } from "@/lib/search"
@@ -99,7 +100,7 @@ function DateCell({ value, onChange, label = t("Date"), faded = false }: { value
   )
 }
 
-type Order = "date-asc" | "date-desc" | "amount-desc" | "amount-asc" | "name"
+type Order = LedgerOrder
 
 /** One of the header's figures: a small label over its value. */
 function HeaderFigure({ label, title, children }: { label: string; title?: string; children: ReactNode }) {
@@ -111,37 +112,51 @@ function HeaderFigure({ label, title, children }: { label: string; title?: strin
   )
 }
 
-/** A pill holding a native select: "Type: All". */
-function PillSelect({ id, label, value, onChange, options }: { id: string; label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
-  const current = options.find(([v]) => v === value)?.[1] ?? options[0]?.[1]
-  const active = value !== options[0]?.[0]
-  return (
-    <label htmlFor={id} className={cn("pill relative cursor-pointer !pr-8", active && "!bg-wash !shadow-none")}>
-      <span className="text-ink-2">{label}</span>
-      <span className="max-w-40 truncate">{current}</span>
-      <ChevronsUpDownIcon className="pointer-events-none absolute top-1/2 right-3 !size-3.5 -translate-y-1/2 text-ink-2" />
-      <select id={id} value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" aria-label={label}>
-        {options.map(([v, l]) => (
-          <option key={v} value={v}>{l}</option>
-        ))}
-      </select>
-    </label>
-  )
-}
-
 /** The ledger for one month; the month lives in the address (#/ledger/2026-11). */
 export function LedgerView({ month, setMonth, typeParam = "" }: { month: string; setMonth: (m: string) => void; typeParam?: string }) {
-  const { user, options, reloadOptions, tableVersion, quickAdd, editEntry, refund } = useApp()
+  const { user, setUser, options, reloadOptions, tableVersion, quickAdd, editEntry, refund } = useApp()
   const currency = user.prefs.currency
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [query, setQuery] = useState("")
-  const [typeFilter, setTypeFilter] = useState(typeParam)
-  // A type picked in the sidebar ("This month") filters the table.
-  useEffect(() => setTypeFilter(typeParam), [typeParam])
-  const [cardFilter, setCardFilter] = useState("")
-  const [order, setOrder] = useState<Order>("date-asc")
+  // Filters and the sort, each on a line the toolbar's Filter and Sort buttons open (components/ledger-filters).
+  const [filters, setFilters] = useState<Filter[]>(() => (typeParam ? [newFilter("type", { values: [typeParam] })] : []))
+  const [showFilters, setShowFilters] = useState(!!typeParam)
+  const [openFilter, setOpenFilter] = useState<string | null>(null)
+  const [addingFilter, setAddingFilter] = useState(false)
+  // A type picked in the sidebar ("This month") filters the table by it.
+  const lastTypeParam = useRef(typeParam)
+  useEffect(() => {
+    if (typeParam === lastTypeParam.current) return
+    const was = lastTypeParam.current
+    lastTypeParam.current = typeParam
+    if (typeParam) {
+      setFilters([newFilter("type", { values: [typeParam] })])
+      setShowFilters(true)
+    } else if (was) setFilters([])
+  }, [typeParam])
+  // The sort starts as the one saved to the account; "Set to default" saves the current one.
+  const savedOrder: Order = user.prefs.ledger_order ?? "date-asc"
+  const [order, setOrder] = useState<Order>(savedOrder)
+  const [showSort, setShowSort] = useState(false)
+  const [sortOpen, setSortOpen] = useState(false)
+  const saveOrder = async () => {
+    try {
+      const prefs = await api.savePrefs({ ledger_order: order })
+      setUser({ ...user, prefs })
+      toast.success(t("Saved as the default sort."))
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+  const activeFilters = filters.filter(isActive).length
+  // What the line under the toolbar shows; while it folds away it keeps showing what it last did.
+  const lineOpen = selected.size === 0 && (showSort || showFilters)
+  const lastLine = useRef({ sort: false, filters: false })
+  if (lineOpen) lastLine.current = { sort: showSort, filters: showFilters }
+  const lineSort = lineOpen ? showSort : lastLine.current.sort
+  const lineFilters = lineOpen ? showFilters : lastLine.current.filters
   const [drafting, setDrafting] = useState(false)
   const [ask, confirmEl] = useConfirm()
   const isThisMonth = month === thisMonth()
@@ -179,13 +194,8 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
     }
     return [...entries]
       .sort(by[order])
-      .filter(
-        (e) =>
-          (!typeFilter || e.type === typeFilter) &&
-          (!cardFilter || e.card === cardFilter) &&
-          (!q || [e.name, e.type, e.card].some((f) => matches(f, q))),
-      )
-  }, [entries, query, typeFilter, cardFilter, order])
+      .filter((e) => passes(e, filters) && (!q || [e.name, e.type, e.card].some((f) => matches(f, q))))
+  }, [entries, query, filters, order])
   const total = shown.reduce((s, e) => s + Math.round(e.amount * 100), 0) / 100
 
   const update = async (entry: Entry, change: EntryInput): Promise<boolean> => {
@@ -228,7 +238,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
   }
 
   const allSelected = shown.length > 0 && shown.every((e) => selected.has(e.id))
-  const filtered = !!query.trim() || !!typeFilter || !!cardFilter
+  const filtered = !!query.trim() || activeFilters > 0
   const pct = stats && stats.prev_to_date ? ((stats.to_date - stats.prev_to_date) / Math.abs(stats.prev_to_date)) * 100 : null
   const prevName = monthName(shiftMonth(month, -1))
 
@@ -284,27 +294,31 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
           </>
         ) : (
           <>
-            <PillSelect id="table-type" label={t("Type")} value={typeFilter} onChange={setTypeFilter} options={[["", t("All")], ...options.types.map((t) => [t.name, t.name] as [string, string])]} />
-            <PillSelect id="table-card" label={t("Card")} value={cardFilter} onChange={setCardFilter} options={[["", t("All")], ...options.cards.map((c) => [c.name, c.name] as [string, string])]} />
-            <PillSelect
-              id="table-order"
-              label={t("Order")}
-              value={order}
-              onChange={(v) => setOrder(v as Order)}
-              options={[
-                ["date-asc", t("Date, oldest first")],
-                ["date-desc", t("Date, newest first")],
-                ["amount-desc", t("Amount, largest first")],
-                ["amount-asc", t("Amount, smallest first")],
-                ["name", t("Name, A to Z")],
-              ]}
-            />
-            {(typeFilter || cardFilter || order !== "date-asc") && (
-              <button type="button" className="h-8 rounded-full px-2.5 text-[13.5px] text-ink-2 hover:bg-wash hover:text-ink" onClick={() => { setTypeFilter(""); setCardFilter(""); setOrder("date-asc") }}>
-                {t("Reset")}
-              </button>
-            )}
             <span className="flex-1" />
+            <ToolbarToggle
+              icon={ListFilterIcon}
+              label={t("Filter")}
+              count={activeFilters}
+              on={showFilters}
+              active={activeFilters > 0}
+              onClick={() => {
+                const open = !showFilters
+                setShowFilters(open)
+                // Nothing to show yet: go straight to choosing what to filter by.
+                if (open && filters.length === 0) setTimeout(() => setAddingFilter(true), 0)
+              }}
+            />
+            <ToolbarToggle
+              icon={ArrowUpDownIcon}
+              label={t("Sort")}
+              on={showSort}
+              active={order !== savedOrder}
+              onClick={() => {
+                const open = !showSort
+                setShowSort(open)
+                if (open) setTimeout(() => setSortOpen(true), 0)
+              }}
+            />
             {/* Search: an icon that opens into a field on hover (after a beat, so passing over it doesn't) or focus,
                 and stays open while it holds text. The field eases open; its text fades in once there's room. */}
             <label
@@ -359,6 +373,33 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
             </button>
           </>
         )}
+      </div>
+
+      {/* The line the Filter and Sort buttons open: the sort, then the filters. It unfolds and folds away,
+          keeping what it showed while it closes. */}
+      <div
+        className={cn("grid transition-[grid-template-rows,opacity,margin] duration-250 ease-[cubic-bezier(.32,.72,0,1)] motion-reduce:transition-none", lineOpen ? "mt-2.5 grid-rows-[1fr] opacity-100" : "mt-0 grid-rows-[0fr] opacity-0")}
+        inert={!lineOpen}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-0.5">
+            {lineSort && <SortLine order={order} setOrder={setOrder} savedOrder={savedOrder} onSetDefault={() => void saveOrder()} open={sortOpen} setOpen={setSortOpen} />}
+            {lineSort && lineFilters && <span aria-hidden="true" className="chip-in h-4 w-px bg-rule-2" />}
+            {lineFilters && (
+              <FilterLine
+                filters={filters}
+                setFilters={setFilters}
+                types={options.types}
+                cards={options.cards}
+                month={month}
+                openID={openFilter}
+                setOpenID={setOpenFilter}
+                adding={addingFilter}
+                setAdding={setAddingFilter}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
       {/* The table, from tablets up */}
