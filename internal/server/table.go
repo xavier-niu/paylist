@@ -290,3 +290,53 @@ func (s *Server) handleMonths(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, months)
 }
+
+// requestToday is the browser's date (?today= or "today" in the body), which
+// can differ from the server's.
+func requestToday(d string) time.Time {
+	if t, err := store.ParseDate(d); err == nil {
+		return t
+	}
+	return time.Now()
+}
+
+// handleRefundMatches: ?name= and/or ?amount=, the purchases a refund would undo.
+func (s *Server) handleRefundMatches(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	var amount *float64
+	if v := strings.TrimSpace(q.Get("amount")); v != "" {
+		n, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "The amount must be a number.")
+			return
+		}
+		amount = &n
+	}
+	out, err := s.opts.Store.RefundMatches(r.Context(), currentUser(r.Context()).ID, q.Get("name"), amount, requestToday(q.Get("today")), 5)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, sentence(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleRefund applies a refund: {id} for a picked purchase, or {name, amount}.
+func (s *Server) handleRefund(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		store.RefundInput
+		Today string `json:"today"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	res, err := s.opts.Store.Refund(r.Context(), currentUser(r.Context()).ID, req.RefundInput, requestToday(req.Today))
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "No such entry.")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, sentence(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}

@@ -158,6 +158,28 @@ func TestTableAPI(t *testing.T) {
 		t.Errorf("csv: %s", body)
 	}
 
+	// The Refund dialog: matches, then a refund by the picked id.
+	if m := decodeJSON[[]store.Entry](t, e.do(t, c, "GET", "/api/refund/matches?name=lun&amount=30&today=2026-11-20", nil)); len(m) != 1 || m[0].ID != created.ID {
+		t.Errorf("refund matches: %+v", m)
+	}
+	if m := decodeJSON[[]store.Entry](t, e.do(t, c, "GET", "/api/refund/matches?name=lun&amount=31&today=2026-11-20", nil)); len(m) != 0 {
+		t.Errorf("refund matches, wrong amount: %+v", m)
+	}
+	if code := status(t, e.do(t, c, "GET", "/api/refund/matches?amount=lots", nil)); code != 400 {
+		t.Errorf("refund matches, bad amount: %d", code)
+	}
+	gift := decodeJSON[store.RefundResult](t, e.do(t, c, "POST", "/api/refund", map[string]any{"name": "Gift card", "amount": 50, "today": "2026-11-20"}))
+	if gift.Added == nil || gift.Added.Amount != -50 || gift.Added.Date != "2026-11-20" {
+		t.Errorf("refund, added: %+v", gift)
+	}
+	if code := status(t, e.do(t, c, "POST", "/api/refund", map[string]any{"id": gift.Added.ID})); code != 400 {
+		t.Errorf("refunding a refund: %d", code)
+	}
+	if got := decodeJSON[store.RefundResult](t, e.do(t, c, "POST", "/api/refund", map[string]any{"name": "Gift card", "amount": -50, "today": "2026-11-20"})); got.Added == nil {
+		t.Errorf("a refund never matches a refund: %+v", got)
+	}
+	e.do(t, c, "POST", "/api/entries/delete", map[string]any{"ids": []int64{gift.Added.ID}}).Body.Close()
+
 	// The New entry form's suggestions: this account's names only.
 	if sg := decodeJSON[[]store.Suggestion](t, e.do(t, c, "GET", "/api/entries/suggest?q=lun", nil)); len(sg) != 1 || sg[0].Name != "Lunch" || sg[0].Amount != 30 || sg[0].Card != "Visa" {
 		t.Errorf("suggest: %+v", sg)

@@ -229,3 +229,56 @@ func TestSuggestEntries(t *testing.T) {
 		t.Errorf("blank text: %+v", none)
 	}
 }
+
+func TestRefund(t *testing.T) {
+	ctx := context.Background()
+	st, u := newStore(t)
+	today := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{
+		entry("Coffee", "Food", 18, "2026-11-20", "Cash"),
+		entry("Coffee", "Food", 19.77, "2026-11-02", "Cash"),
+		entry("Headphones", "Shopping", 299, "2026-10-15", "Credit card"),
+		entry("Old coat", "Shopping", 500, "2026-05-01", ""), // too long ago
+		entry("Coffee", "", -5, "2026-11-21", ""),            // a refund, never a match
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f := func(v float64) *float64 { return &v }
+
+	// Name and amount: one match, deleted.
+	r, err := st.Refund(ctx, u.ID, RefundInput{Name: "coffee", Amount: f(19.77)}, today)
+	if err != nil || r.Refunded == nil || r.Refunded.Amount != 19.77 || r.Added != nil {
+		t.Fatalf("one match: %+v %v", r, err)
+	}
+	// The amount alone works too; the sign doesn't matter.
+	if r, err := st.Refund(ctx, u.ID, RefundInput{Amount: f(-299)}, today); err != nil || r.Refunded == nil || r.Refunded.Name != "Headphones" {
+		t.Fatalf("amount only: %+v %v", r, err)
+	}
+	// Several matches: nothing changes, they come back newest first.
+	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{entry("Iced coffee", "Food", 25, "2026-11-22", "")}); err != nil {
+		t.Fatal(err)
+	}
+	r, err = st.Refund(ctx, u.ID, RefundInput{Name: "coffee"}, today)
+	if err != nil || len(r.Matches) != 2 || r.Matches[0].Name != "Iced coffee" || r.Refunded != nil {
+		t.Fatalf("several: %+v %v", r, err)
+	}
+	// Then by id.
+	if r, err := st.Refund(ctx, u.ID, RefundInput{ID: r.Matches[1].ID}, today); err != nil || r.Refunded == nil || r.Refunded.Amount != 18 {
+		t.Fatalf("by id: %+v %v", r, err)
+	}
+	// No match: added as a negative amount today, or an error without an amount.
+	r, err = st.Refund(ctx, u.ID, RefundInput{Name: "Old coat", Amount: f(500)}, today)
+	if err != nil || r.Added == nil || r.Added.Amount != -500 || r.Added.Date != "2026-11-24" || r.Added.Name != "Old coat" {
+		t.Fatalf("no match: %+v %v", r, err)
+	}
+	if _, err := st.Refund(ctx, u.ID, RefundInput{Name: "nothing like it"}, today); err == nil {
+		t.Error("a refund with no match and no amount was accepted")
+	}
+	if _, err := st.Refund(ctx, u.ID, RefundInput{}, today); err == nil {
+		t.Error("an empty refund was accepted")
+	}
+	// A refund entry can't be refunded.
+	if _, err := st.Refund(ctx, u.ID, RefundInput{ID: r.Added.ID}, today); err == nil {
+		t.Error("a refund was refunded")
+	}
+}

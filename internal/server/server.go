@@ -87,6 +87,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/options/{id}", s.requireUser(s.handleDeleteOption))
 	mux.HandleFunc("GET /api/stats", s.requireUser(s.handleStats))
 	mux.HandleFunc("GET /api/months", s.requireUser(s.handleMonths))
+	mux.HandleFunc("GET /api/refund/matches", s.requireUser(s.handleRefundMatches))
+	mux.HandleFunc("POST /api/refund", s.requireUser(s.handleRefund))
 
 	// The agent page: conversations, and a turn run with the user's own key
 	mux.HandleFunc("GET /api/chats", s.requireUser(s.handleListChats))
