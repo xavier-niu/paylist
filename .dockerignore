@@ -1,0 +1,11 @@
+.git
+.github
+.claude
+Dockerfile
+.dockerignore
+*.md
+web/ui/node_modules
+web/dist
+/paylist
+/dist
+/data

@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+
+# ---- web app ----
+FROM --platform=$BUILDPLATFORM node:22-alpine AS ui
+WORKDIR /src/web/ui
+COPY web/ui/package.json web/ui/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
+COPY web/ui/ ./
+# Writes /src/web/dist, which the server embeds.
+RUN npm run build
+
+# ---- build ----
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+
+COPY . .
+COPY --from=ui /src/web/dist ./web/dist
+ARG TARGETOS
+ARG TARGETARCH
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w" -o /out/paylist ./cmd/paylist
+# An empty data directory, owned by the runtime's non-root user (uid 65532).
+RUN mkdir -p /out/data
+
+# ---- runtime ----
+# distroless/static ships CA certificates (needed for HTTPS to LLM providers) and runs as non-root.
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/paylist /paylist
+COPY --from=build --chown=65532:65532 /out/data /data
+# The database and the key-encryption secret live in /data: mount a volume there.
+ENV PAYLIST_ADDR=0.0.0.0:8080 \
+    PAYLIST_DATA=/data
+VOLUME /data
+EXPOSE 8080
+USER nonroot:nonroot
+ENTRYPOINT ["/paylist"]

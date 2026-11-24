@@ -32,3 +32,12 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# paylist
+/paylist
+/dist/
+/data/
+/web/ui/node_modules/
+# The built web app (make ui); only the placeholder that lets Go embed it is kept.
+/web/dist/*
+!/web/dist/.gitkeep
