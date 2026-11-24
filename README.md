@@ -1,37 +1,83 @@
-# Paylist
+<p align="center">
+  <img src="docs/icon.svg" width="96" height="96" alt="">
+</p>
 
-**Your monthly spending in one table, with statistics, an MCP server, and an agent that works on it with your own AI key.**
+<h1 align="center">Paylist</h1>
 
-Paylist is a self-hosted spending tracker. The **Ledger** page keeps a spreadsheet-like table of what you paid each month: a name, a type, an amount, a date and the card you paid with. A statistics page charts it by month, by day, by type and by card. AI agents such as Claude Code can read and change the ledger over MCP, and the built-in **Agent** page does the same with the model and key you choose.
+<p align="center">
+  <strong>Your spending, month by month: a ledger you write in, an overview that shows where it went,<br>and an agent that keeps the books for you, with your own AI key.</strong>
+</p>
 
-It is one Go program with a SQLite database and the web app built in.
+<p align="center">
+  Self-hosted · one Go binary · SQLite · English and 中文 · light and dark
+</p>
 
-## What you can do
+---
 
-**The table**
-- One month at a time; step back and forth, or jump to this month.
-- Click any cell to edit it. **Type** and **Card** are dropdowns of options with colors, like a spreadsheet's; type a new name to create one.
-- Add expenses in the last row: press Enter and the row clears for the next one, keeping the type, card and date.
-- Filter the month, select rows to delete several at once, and download the month as CSV.
+Paylist is a personal and household spending tracker you run yourself. Every expense is one line, with a name, a type, an amount, a date and the card it was paid with, kept month by month. You write them down in a few keystrokes; Paylist shows you the month at a glance; and an AI agent (yours, on your own key) can add, fix and answer questions about them. Agents you already use, such as Claude Code, can do the same over MCP.
 
-**Statistics**
-- This month's total, compared with last month; the daily average; the number of entries; the largest type.
-- Monthly spending for the last 12 months (click a month to open it), daily spending for the month, and totals by type and by card.
-- Every chart has a table view.
+## Overview
 
-**MCP**
-- Paylist is an MCP server at `/mcp` (Streamable HTTP). Create a token in **Settings → Agent access** and connect Claude Code, Codex, Cursor or any MCP client.
-- Tools: `list_entries`, `add_entries`, `update_entry`, `delete_entries`, `list_options`, `manage_option`, `get_stats`.
+Paylist opens on the month at a glance.
 
-**Agent**
-- Chat with an assistant that works on your table: "add lunch 35 and a metro ride 4.5, paid by card", "how much did I spend on food this month?", "rename the card Alipay to Alipay Wallet".
-- You bring your own key: Anthropic (Claude), OpenAI, DeepSeek, OpenRouter, Qwen, Moonshot, Ollama or any other OpenAI-compatible API with tool calling. Keys are stored encrypted on your server and never sent back to the browser.
-- The agent connects to the same MCP server that external agents use, so it has exactly the same tools. You see each tool it calls, with its input and result. Conversations are saved so you can continue them.
+- **This month's spending** against the same days of last month: ↑ CN¥801.72 (10.2%).
+- **Cumulative spending** through the month, drawn over last month's, so you see whether you're ahead or behind.
+- **Day by day**: a calendar shaded by how much went out each day.
+- **By type** and **by card**: two donuts, with the share of each.
+- **Monthly spending** for the last twelve months.
 
-**Accounts**
-- One server can hold a household: each person has their own table, options, model and key. The first person to open a new server becomes its admin and adds the others in **Settings → Members**.
+Click a day, a type or a card to list its entries right there, and click an entry to change it.
 
-## Try it: `make demo`
+## Ledger
+
+One month as a table, edited in place, like a spreadsheet.
+
+- **Press N** anywhere to add an entry. The form stays open for the next one, and as you type a name it offers the ones you've used before, filling in the type, card and last amount.
+- **Press R** for a refund: type what came back ("coffee 19.77"). If it matches a recent purchase, that purchase is deleted (with Undo); if not, the refund is added as a negative amount.
+- Click any cell to change it. Types and cards are colored options; type a new name to create one.
+- Filter by type or card, sort, search, select rows to delete several at once, and export the month as CSV.
+- The header keeps the month to date and the change from last month in view; the sidebar keeps this month's spending by type and your recent months a click away.
+
+## Agent
+
+Chat with an assistant that works on your ledger:
+
+> add lunch 35 and a metro ride 4.5 today, paid by card
+> how much did I spend on food this month?
+> compare this month with last month, type by type
+
+- **Bring your own key**: Anthropic (Claude), OpenAI, DeepSeek, OpenRouter, Qwen, Moonshot, Ollama, or any other OpenAI-compatible API with tool calling. Keys are stored encrypted on your server and never sent back to the browser.
+- The agent uses the same MCP tools as outside agents, and you see every call it makes, with what went in and what came back.
+- Conversations are saved, so you can pick one up later.
+
+## MCP
+
+Paylist is an MCP server. Create a token in **Settings → Agent access** and connect Claude Code, Codex, Cursor or any MCP client:
+
+```sh
+claude mcp add --transport http paylist https://pay.example.com/mcp \
+  --header "Authorization: Bearer plt_…"
+```
+
+| Tool | Does |
+|---|---|
+| `list_entries` | Entries of a month or a date range, optionally of one type or card, or with names containing some text; with their count and total |
+| `add_entries` | Add entries, all or none. The date defaults to today; a new type or card becomes an option |
+| `update_entry` | Change the fields given |
+| `delete_entries` | Delete entries by id |
+| `list_options` | The types and cards, with their colors and how many entries use each |
+| `manage_option` | Create, rename, recolor or delete a type or card; renaming carries through to every entry |
+| `get_stats` | A month's total, change from the month before, daily totals, totals by type and by card, and the months before it |
+
+A token reaches only its owner's ledger, and can be revoked at any time.
+
+## For the household
+
+One server holds everyone: each person has their own ledger, types, cards, model and key. The first person to open a new server becomes its admin and adds the others in **Settings → Members**.
+
+## Get started
+
+### Try the demo
 
 You need [Go](https://go.dev/dl/) 1.27+ and [Node.js](https://nodejs.org/) 20+ (or Docker, which `make` uses to build the web app when Node is missing).
 
@@ -39,49 +85,24 @@ You need [Go](https://go.dev/dl/) 1.27+ and [Node.js](https://nodejs.org/) 20+ (
 make demo
 ```
 
-Open <http://localhost:8080> and sign in as `demo@admin.com` / `admin`. The demo account starts with six months of made-up spending, and the **Agent** page offers an offline **Demo model** that needs no key: it understands `add <name> <amount> [type] [card]` and answers anything else with this month's statistics. Choose a real provider in **Settings → AI model** to talk to a real agent.
+Open <http://localhost:8080> and sign in as `demo@admin.com` / `admin`. The demo account comes with six months of made-up spending, and an offline **Demo model** for the agent that needs no key (it understands `add <name> <amount> [type] [card]`). `make demo-reset` starts it over. The demo password is short, so keep it on your own machine.
 
-The demo data lives in `/tmp/paylist-demo`; `make demo-reset` deletes it so the next `make demo` starts fresh. The demo password is short and the demo model is on, so keep it on your own machine.
-
-## Deploy with Docker
+### Run it with Docker
 
 ```sh
-docker build -t paylist .
 docker run -d --name paylist --restart unless-stopped \
-  -p 8080:8080 -v paylist-data:/data paylist
+  -p 8080:8080 -v paylist-data:/data xavierniu/paylist
 ```
 
-Open <http://localhost:8080>. The first visit asks you to create the admin account. Whoever opens a new server first becomes its admin, so do it right away, or create the admin before anyone can connect with `-e PAYLIST_ADMIN_EMAIL=you@example.com -e PAYLIST_ADMIN_PASSWORD='a long password'`.
+Open <http://localhost:8080> and create the admin account; whoever opens a new server first becomes its admin, so do it right away, or create it up front with `-e PAYLIST_ADMIN_EMAIL=you@example.com -e PAYLIST_ADMIN_PASSWORD='a long password'`.
 
 Behind an HTTPS proxy (Caddy, nginx), also set `-e PAYLIST_SECURE_COOKIES=1 -e PAYLIST_PUBLIC_URL=https://pay.example.com`.
 
-The CI workflow (`.github/workflows/docker.yml`) runs the tests and, on pushes to `main`, builds a multi-arch image and pushes it to Docker Hub (`DOCKERHUB_TOKEN`, and optionally `DOCKERHUB_USERNAME` and `DOCKERHUB_REPO`, as repository secrets).
+Images are built for amd64 and arm64 from every push to `main` (`latest`) and every `v*` tag. To build your own: `docker build -t paylist .`
 
 ### Back up
 
-Everything is in the data directory: `paylist.db` and `secret.key`, which encrypts the stored API keys. Back them up together; without `secret.key`, everyone has to enter their API key again.
-
-## Connect an agent over MCP
-
-1. In **Settings → Agent access**, name a token and create it. Copy it: it is shown once.
-2. Add the server to your agent. For Claude Code:
-   ```sh
-   claude mcp add --transport http paylist https://pay.example.com/mcp \
-     --header "Authorization: Bearer plt_…"
-   ```
-   Other clients take the same address and header in their MCP settings.
-
-| Tool | Does |
-|---|---|
-| `list_entries` | Entries of a month (the current one by default) or a date range, optionally one type, one card, or names containing a query; with their count and total |
-| `add_entries` | Add entries, all or none: `{entries: [{name, amount, date?, type?, card?}]}`. The date defaults to today; a new type or card becomes an option |
-| `update_entry` | Change the fields given: `{id, name?, amount?, date?, type?, card?}` |
-| `delete_entries` | Delete by id: `{ids}` |
-| `list_options` | The type and card options, with their colors and how many entries use each |
-| `manage_option` | Create, rename, recolor or delete an option: `{kind, action, name, new_name?, color?}`. Renaming renames it on every entry; deleting clears it from them |
-| `get_stats` | A month's total, count, daily average, change from the month before, daily totals, totals by type and by card, and the monthly totals before it |
-
-A token reaches only its owner's table. Revoke it any time in the same place.
+Everything lives in the data directory: `paylist.db`, and `secret.key`, which encrypts the stored API keys. Back them up together; without `secret.key`, everyone has to enter their API key again.
 
 ## Configuration
 
@@ -95,7 +116,7 @@ A token reaches only its owner's table. Revoke it any time in the same place.
 | `PAYLIST_PUBLIC_URL` | from each request | How people reach the server; set it behind a proxy |
 | `-static` / `PAYLIST_STATIC_DIR` | embedded | Serve the web app from a directory instead, such as `web/dist` |
 | `PAYLIST_DEV_FAKE=1` | off | Offer the offline demo model. For demos and tests only |
-| `PAYLIST_DEMO_SEED=1` | off | Fill the `PAYLIST_ADMIN_EMAIL` account's empty table with demo data |
+| `PAYLIST_DEMO_SEED=1` | off | Fill the `PAYLIST_ADMIN_EMAIL` account's empty ledger with demo data |
 
 Accounts can also be managed from the command line:
 
@@ -125,4 +146,4 @@ web/ui/             the web app: React, TypeScript, Tailwind CSS and shadcn/ui, 
 web/embed.go        embeds web/dist into the binary
 ```
 
-The agent page's model runs on the server, with the key stored there: each turn opens an MCP client session to an in-memory MCP server for the signed-in user, lists its tools, and loops (model → tool calls → results) until the model answers, streaming text and tool activity to the browser as newline-delimited JSON. With Claude, it uses adaptive thinking at medium effort, prompt caching, and the server-side refusal fallback where the model supports it; Claude's replies are stored as Claude wrote them and sent back unchanged in later turns.
+The agent's model runs on the server, with the key stored there: each turn opens an MCP client session to an in-memory MCP server for the signed-in user, lists its tools, and loops (model → tool calls → results) until the model answers, streaming text and tool activity to the browser as newline-delimited JSON. With Claude it runs at medium effort with prompt caching, uses the server-side refusal fallback where the model supports it, and replays Claude's earlier replies exactly as written.
