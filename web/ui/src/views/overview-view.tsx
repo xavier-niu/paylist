@@ -15,8 +15,8 @@ import { cn } from "@/lib/utils"
 type Pick = { kind: "day" | "type" | "card"; key: string; names: string[]; label: string; color?: string }
 
 export function OverviewView() {
-  const { user, tableVersion } = useApp()
-  const currency = user.prefs.currency
+  const { tableVersion, ledger } = useApp()
+  const currency = ledger.currency
   const [month, setMonth] = useState(thisMonth())
   const [stats, setStats] = useState<Stats | null>(null)
   const [prevStats, setPrevStats] = useState<Stats | null>(null)

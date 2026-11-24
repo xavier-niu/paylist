@@ -41,7 +41,7 @@ export function EntryDialog({
   entry?: Entry | null
   refund?: boolean
 }) {
-  const { options, user, reloadOptions, bumpTable } = useApp()
+  const { options, reloadOptions, bumpTable, ledger } = useApp()
   const [name, setName] = useState("")
   const [amount, setAmount] = useState("")
   const [type, setType] = useState("")
@@ -190,7 +190,7 @@ export function EntryDialog({
         },
       })
     } else if (res.added) {
-      toast.success(t("Added a refund of {amount}.", { amount: money(Math.abs(res.added.amount), user.prefs.currency) }))
+      toast.success(t("Added a refund of {amount}.", { amount: money(Math.abs(res.added.amount), ledger.currency) }))
     }
     bumpTable()
     void reloadOptions()
@@ -321,7 +321,7 @@ export function EntryDialog({
                       <span className="min-w-0 flex-1 truncate font-medium">{sg.name}</span>
                       {sg.type && <Tag name={sg.type} color={optionColor(options, "type", sg.type)} className="!shadow-none !bg-transparent !px-0 text-[12.5px] text-ink-2" />}
                       {sg.uses > 1 && <span className="text-[12px] text-muted-foreground tabular-nums">×{sg.uses}</span>}
-                      <span className="w-24 text-right tabular-nums">{money(sg.amount, user.prefs.currency)}</span>
+                      <span className="w-24 text-right tabular-nums">{money(sg.amount, ledger.currency)}</span>
                     </button>
                   </li>
                 ))}
@@ -332,7 +332,7 @@ export function EntryDialog({
             <div className={row}>
               <span className={name_}><HashIcon /> {t("Amount")}</span>
               <span className="flex items-center gap-1.5 rounded-[8px] px-2 hover:bg-wash focus-within:bg-wash">
-                <span className="text-muted-foreground">{currencySymbol(user.prefs.currency)}</span>
+                <span className="text-muted-foreground">{currencySymbol(ledger.currency)}</span>
                 <input
                   ref={amountRef}
                   id="entry-amount"
@@ -378,7 +378,7 @@ export function EntryDialog({
                       <span className={cn("min-w-0 flex-1 truncate", m === picked && "font-medium text-red line-through decoration-1")}>{m.name}</span>
                       <span className="text-[12.5px] text-ink-2 tabular-nums">{dateLabel(m.date, { month: "short", day: "numeric" })}</span>
                       {m.card && <span className="max-w-28 truncate text-[12.5px] text-ink-2">{m.card}</span>}
-                      <span className={cn("w-24 text-right tabular-nums", m === picked && "text-red")}>{money(m.amount, user.prefs.currency)}</span>
+                      <span className={cn("w-24 text-right tabular-nums", m === picked && "text-red")}>{money(m.amount, ledger.currency)}</span>
                     </button>
                   </li>
                 ))}

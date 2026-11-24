@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react"
-import { BotIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon, NotebookTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SettingsIcon, type LucideIcon } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { BookOpenIcon, BotIcon, CheckIcon, ChevronsUpDownIcon, LayoutDashboardIcon, LogOutIcon, PlusIcon, UsersIcon, MenuIcon, NotebookTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SettingsIcon, type LucideIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { EntryDialog } from "@/components/entry-dialog"
+import { NewLedgerDialog } from "@/components/ledger-dialog"
 import { Logo, Wordmark } from "@/components/logo"
 import {
   DropdownMenu,
@@ -13,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Toaster } from "@/components/ui/sonner"
-import { api, money, monthLabel, plainAmount, setSignedOutHandler, thisMonth, type Config, type Entry, type GroupTotal, type ModelSettings, type MonthTotal, type Options, type User } from "@/lib/api"
+import { api, money, monthLabel, plainAmount, setCurrentLedger, setSignedOutHandler, thisMonth, type Config, type Entry, type GroupTotal, type Ledger, type ModelSettings, type MonthTotal, type Options, type User } from "@/lib/api"
 import { AppContext, applyTheme, type AppState } from "@/lib/state"
 import { loadPinyin } from "@/lib/search"
 import { cn } from "@/lib/utils"
@@ -51,6 +52,10 @@ export function App() {
   const [config, setConfig] = useState<Config | null>(null)
   const [session, setSession] = useState<{ user: User; model: ModelSettings } | null>(null)
   const [options, setOptions] = useState<Options>({ types: [], cards: [] })
+  // The user's ledgers and the one open; requests carry it (api.setCurrentLedger).
+  const [ledgers, setLedgers] = useState<Ledger[]>([])
+  const [ledgerID, setLedgerID] = useState(0)
+  const [newLedger, setNewLedger] = useState(false)
   const [booting, setBooting] = useState(true)
   const [loc, setLoc] = useState(readRoute)
   const [tableVersion, setTableVersion] = useState(0)
@@ -97,6 +102,10 @@ export function App() {
         applyTheme(me.user.prefs.theme)
         // "system" on the account leaves whatever this browser was set to (the sign-in page has its own switch).
         if (me.user.prefs.language !== "system") setLanguage(me.user.prefs.language)
+        const lg = await api.ledgers()
+        setLedgers(lg.ledgers)
+        setLedgerID(lg.current)
+        setCurrentLedger(lg.current)
         setOptions(await api.options())
       } catch {
         setSession(null)
@@ -119,12 +128,13 @@ export function App() {
     return () => clearTimeout(id)
   }, [])
 
-  // N opens a new entry and R a refund, both on the ledger, unless typing somewhere.
+  // N opens a new entry and R a refund, both on the ledger, unless typing somewhere (or only viewing the ledger).
+  const canWriteRef = useRef(true)
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
       const key = e.key.toLowerCase()
-      if ((key !== "n" && key !== "r") || e.metaKey || e.ctrlKey || e.altKey) return
+      if ((key !== "n" && key !== "r") || e.metaKey || e.ctrlKey || e.altKey || !canWriteRef.current) return
       if (t.closest("input, textarea, select, [contenteditable], [role=dialog]")) return
       e.preventDefault()
       // Both open over the ledger, where what they change shows up.
@@ -151,7 +161,7 @@ export function App() {
         setMonths(list[0]?.month === now ? list : [{ month: now, total: 0, count: 0 }, ...list])
       })
       .catch(() => {})
-  }, [signedIn, tableVersion])
+  }, [signedIn, tableVersion, ledgerID])
 
   const reloadOptions = useCallback(async () => {
     setOptions(await api.options())
@@ -189,8 +199,42 @@ export function App() {
     )
   }
 
+  const ledger = ledgers.find((l) => l.id === ledgerID) ?? ledgers[0]
+  const canWrite = ledger?.role !== "viewer"
+  canWriteRef.current = canWrite
+  const switchLedger = async (id: number) => {
+    setCurrentLedger(id)
+    setLedgerID(id)
+    setTableVersion((v) => v + 1)
+    try {
+      setOptions(await api.options())
+      const prefs = await api.savePrefs({ ledger_id: id })
+      setSession((s) => (s ? { ...s, user: { ...s.user, prefs } } : s))
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+  const reloadLedgers = async (open?: number) => {
+    const lg = await api.ledgers()
+    setLedgers(lg.ledgers)
+    const next = open ?? (lg.ledgers.some((l) => l.id === ledgerID) ? ledgerID : lg.current)
+    if (next !== ledgerID) await switchLedger(next)
+  }
+  if (!ledger) {
+    return (
+      <div className="grid min-h-dvh place-items-center" role="status" aria-label={t("Loading")}>
+        <Logo className="breathe size-10" />
+      </div>
+    )
+  }
+
   const state: AppState = {
     config,
+    ledger,
+    ledgers,
+    switchLedger,
+    reloadLedgers,
+    canWrite,
     user: session.user,
     setUser: (user) => setSession((s) => (s ? { ...s, user } : s)),
     model: session.model,
@@ -216,16 +260,32 @@ export function App() {
   const sidebar = (
     <div className="flex h-full flex-col px-2.5 pt-3 pb-3">
       <div className="flex items-center gap-1">
+        {/* The ledger open, and the way to the others, a new one, its settings and the account. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" className="flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-[10px] px-2.5 text-left hover:bg-wash" aria-label={t("Account")}>
+            <button type="button" className="flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-[10px] px-2.5 text-left hover:bg-wash" aria-label={t("Ledgers and account")}>
               <Logo className="size-[20px]" />
-              <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">Paylist</span>
+              <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{ledger.name}</span>
+              <ChevronsUpDownIcon className="size-3.5 shrink-0 text-ink-2" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-60 rounded-[12px] border-0 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0">
-            <DropdownMenuLabel className="truncate font-normal text-muted-foreground">{session.user.email}</DropdownMenuLabel>
+          <DropdownMenuContent align="start" className="w-64 rounded-[12px] border-0 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0">
+            <DropdownMenuLabel className="font-normal text-muted-foreground">{t("Ledgers")}</DropdownMenuLabel>
+            {ledgers.map((l) => (
+              <DropdownMenuItem key={l.id} onSelect={() => l.id !== ledger.id && void switchLedger(l.id)}>
+                <CheckIcon className={cn(l.id !== ledger.id && "invisible")} />
+                <span className="min-w-0 flex-1 truncate">{l.name}</span>
+                {l.role !== "owner" ? (
+                  <span className="text-[11.5px] text-muted-foreground">{l.role === "viewer" ? t("Viewer") : t("Editor")}</span>
+                ) : (
+                  l.members > 1 && <UsersIcon className="!size-3.5 text-muted-foreground" />
+                )}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem onSelect={() => setNewLedger(true)}><PlusIcon /> {t("New ledger")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => (location.hash = "#/settings")}><SettingsIcon /> {t("Ledger settings")}</DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuLabel className="truncate font-normal text-muted-foreground">{session.user.email}</DropdownMenuLabel>
             <DropdownMenuItem onSelect={signOut}><LogOutIcon /> {t("Sign out")}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -250,8 +310,42 @@ export function App() {
       </nav>
 
       <div className="-mx-1 mt-5 min-h-0 flex-1 overflow-y-auto px-1">
+        {/* The ledgers: the open one marked, the others a click away. */}
+        <section aria-label={t("Ledgers")}>
+          <div className="px-2.5 pb-1.5 text-[12.5px] text-ink-2">{t("Ledgers")}</div>
+          <ul className="grid gap-0.5">
+            {ledgers.map((l) => (
+              <li key={l.id}>
+                <button
+                  type="button"
+                  aria-current={l.id === ledger.id ? "true" : undefined}
+                  onClick={() => {
+                    go()
+                    if (l.id !== ledger.id) void switchLedger(l.id)
+                  }}
+                  title={l.role === "owner" ? l.name : t("{name}, shared by {owner}", { name: l.name, owner: l.owner })}
+                  className="flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[13.5px] hover:bg-wash aria-[current=true]:bg-fill aria-[current=true]:font-medium"
+                >
+                  <BookOpenIcon className="size-3.5 shrink-0 text-ink-2" />
+                  <span className="min-w-0 flex-1 truncate">{l.name}</span>
+                  {l.role !== "owner" ? (
+                    <span className="shrink-0 text-[11.5px] font-normal text-muted-foreground">{l.role === "viewer" ? t("Viewer") : t("Editor")}</span>
+                  ) : (
+                    l.members > 1 && <UsersIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                  )}
+                </button>
+              </li>
+            ))}
+            <li>
+              <button type="button" onClick={() => setNewLedger(true)} className="flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-wash hover:text-ink">
+                <PlusIcon className="size-3.5 shrink-0" /> {t("New ledger")}
+              </button>
+            </li>
+          </ul>
+        </section>
+
         {byType.length > 0 && (
-          <section>
+          <section className="mt-5">
             <div className="px-2.5 pb-1.5 text-[12.5px] text-ink-2">{t("This month")}</div>
             <ul className="grid gap-0.5">
               {byType.map((g) => {
@@ -265,7 +359,7 @@ export function App() {
                       aria-current={current ? "page" : undefined}
                       className="flex h-8 items-center gap-2 rounded-[10px] px-2.5 text-[13.5px] hover:bg-wash aria-[current=page]:bg-fill aria-[current=page]:font-medium"
                       data-color={g.name ? g.color : "gray"}
-                      title={`${g.name || t("No type")}: ${money(g.total, session.user.prefs.currency)}, ${tn(g.count, "{n} entry", "{n} entries")}`}
+                      title={`${g.name || t("No type")}: ${money(g.total, ledger.currency)}, ${tn(g.count, "{n} entry", "{n} entries")}`}
                     >
                       <span className="dot" />
                       <span className={cn("min-w-0 flex-1 truncate", !g.name && "text-ink-2")}>{g.name || t("No type")}</span>
@@ -351,6 +445,7 @@ export function App() {
       </div>
       <EntryDialog open={form.open} entry={form.entry} onOpenChange={(open) => setForm((f) => ({ ...f, open }))} />
       <EntryDialog refund open={refunding} onOpenChange={setRefunding} />
+      <NewLedgerDialog open={newLedger} onOpenChange={setNewLedger} currency={ledger.currency} onCreated={(l) => void reloadLedgers(l.id)} />
       <Toaster position="bottom-center" />
     </AppContext.Provider>
   )

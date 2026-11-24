@@ -2,7 +2,7 @@
 // shared by every page.
 import { createContext, useContext } from "react"
 
-import type { Config, Entry, ModelSettings, Options, User } from "@/lib/api"
+import type { Config, Entry, Ledger, ModelSettings, Options, User } from "@/lib/api"
 
 export interface AppState {
   config: Config
@@ -10,6 +10,15 @@ export interface AppState {
   setUser: (u: User) => void
   model: ModelSettings
   setModel: (m: ModelSettings) => void
+  /** The ledger open, and all the user's ledgers. */
+  ledger: Ledger
+  ledgers: Ledger[]
+  /** Opens another ledger (and remembers it). */
+  switchLedger: (id: number) => Promise<void>
+  /** Reloads the ledgers, after one is made, renamed, shared or deleted; then opens id if given. */
+  reloadLedgers: (open?: number) => Promise<void>
+  /** Whether the user may change the open ledger (not a viewer). */
+  canWrite: boolean
   options: Options
   reloadOptions: () => Promise<void>
   /** Bumped when the table changed elsewhere (the agent), so pages reload. */

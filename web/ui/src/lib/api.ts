@@ -7,11 +7,37 @@ import { lang, locale, t, type LangPref } from "@/lib/i18n"
 /** How the ledger sorts a month. */
 export type LedgerOrder = "date-asc" | "date-desc" | "amount-desc" | "amount-asc" | "name"
 
+/** A ledger as the signed-in user sees it: their role in it decides what they can do. */
+export interface Ledger {
+  id: number
+  name: string
+  currency: string
+  role: "owner" | "editor" | "viewer"
+  owner: string
+  members: number
+  created_at: string
+}
+
+export interface LedgerMember {
+  user_id: number
+  email: string
+  name: string
+  role: "owner" | "editor" | "viewer"
+}
+
+// The ledger requests work on, sent with each one (X-Paylist-Ledger).
+let currentLedger = 0
+export function setCurrentLedger(id: number) {
+  currentLedger = id
+}
+const ledgerHeaders = (): Record<string, string> => (currentLedger ? { "X-Paylist-Ledger": String(currentLedger) } : {})
+
 export interface Prefs {
   currency: string
   theme: "system" | "light" | "dark"
   language: LangPref
   ledger_order: LedgerOrder
+  ledger_id?: number
 }
 
 export interface User {
@@ -174,7 +200,7 @@ export function setSignedOutHandler(fn: () => void) {
 async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers: { ...ledgerHeaders(), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
     signal,
@@ -231,7 +257,16 @@ export const api = {
   createEntry: (e: EntryInput) => request<Entry>("POST", "/api/entries", e),
   updateEntry: (id: number, e: EntryInput) => request<Entry>("PUT", `/api/entries/${id}`, e),
   deleteEntries: (ids: number[]) => request<{ deleted: number }>("POST", "/api/entries/delete", { ids }),
-  exportURL: (month: string) => "/api/export.csv" + q({ month }),
+  exportURL: (month: string) => "/api/export.csv" + q({ month, ledger: currentLedger || undefined }),
+
+  ledgers: () => request<{ ledgers: Ledger[]; current: number }>("GET", "/api/ledgers"),
+  createLedger: (name: string, currency: string) => request<Ledger>("POST", "/api/ledgers", { name, currency }),
+  updateLedger: (id: number, change: { name?: string; currency?: string }) => request<Ledger>("PUT", `/api/ledgers/${id}`, change),
+  deleteLedger: (id: number) => request<{ ok: boolean }>("DELETE", `/api/ledgers/${id}`),
+  ledgerMembers: (id: number) => request<LedgerMember[]>("GET", `/api/ledgers/${id}/members`),
+  addLedgerMember: (id: number, email: string, role: "editor" | "viewer") => request<LedgerMember>("POST", `/api/ledgers/${id}/members`, { email, role }),
+  setLedgerMemberRole: (id: number, userID: number, role: "editor" | "viewer") => request<{ ok: boolean }>("PUT", `/api/ledgers/${id}/members/${userID}`, { role }),
+  removeLedgerMember: (id: number, userID: number) => request<{ ok: boolean }>("DELETE", `/api/ledgers/${id}/members/${userID}`),
 
   options: () => request<Options>("GET", "/api/options"),
   createOption: (kind: "type" | "card", name: string, color?: string) => request<Option>("POST", "/api/options", { kind, name, color }),
@@ -250,7 +285,7 @@ export const api = {
   async agentTurn(body: { chat_id?: string; message: string; attachments?: Attachment[] }, onEvent: (e: AgentEvent) => void, signal: AbortSignal) {
     const res = await fetch("/api/agent/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...ledgerHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, today: today() }),
       credentials: "same-origin",
       signal,

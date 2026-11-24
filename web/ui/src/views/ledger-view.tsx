@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
-import { ArrowUpDownIcon, DownloadIcon, ListFilterIcon, EllipsisIcon, PlusIcon, SearchIcon, Trash2Icon, Undo2Icon } from "lucide-react"
+import { ArrowUpDownIcon, DownloadIcon, EyeIcon, ListFilterIcon, EllipsisIcon, PlusIcon, SearchIcon, Trash2Icon, Undo2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
@@ -114,8 +114,8 @@ function HeaderFigure({ label, title, children }: { label: string; title?: strin
 
 /** The ledger for one month; the month lives in the address (#/ledger/2026-11). */
 export function LedgerView({ month, setMonth, typeParam = "" }: { month: string; setMonth: (m: string) => void; typeParam?: string }) {
-  const { user, setUser, options, reloadOptions, tableVersion, quickAdd, editEntry, refund } = useApp()
-  const currency = user.prefs.currency
+  const { user, setUser, options, reloadOptions, tableVersion, quickAdd, editEntry, refund, ledger, canWrite } = useApp()
+  const currency = ledger.currency
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -246,7 +246,14 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
     <div className="mx-auto w-full max-w-[1200px] px-4 pt-7 pb-16 sm:px-8 sm:pt-11">
       {/* The month and its two figures: one row on wide screens; the figures drop below on phones. */}
       <header className="flex flex-wrap items-center justify-between gap-x-8 gap-y-3">
-        <MonthHeading month={month} onChange={setMonth} />
+        <div className="flex min-w-0 items-center gap-2.5">
+          <MonthHeading month={month} onChange={setMonth} />
+          {!canWrite && (
+            <span className="pill soft !h-7 shrink-0 !px-3 text-[12.5px] text-ink-2" title={t("Shared with you to view; only its owner and editors can change it.")}>
+              <EyeIcon className="!size-3.5" /> {t("View only")}
+            </span>
+          )}
+        </div>
         <dl className="flex items-stretch gap-6">
           {/* MTD while the month is still running; a past month shows its whole total. */}
           <HeaderFigure label={isThisMonth ? t("MTD") : t("Total")} title={isThisMonth ? t("Month to date") : undefined}>
@@ -365,12 +372,16 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <button type="button" className="pill shrink-0" onClick={refund} title={t("Refund (R)")}>
-              <Undo2Icon /> {t("Refund")}
-            </button>
-            <button type="button" className="pill dark shrink-0" onClick={quickAdd} title={t("New entry (N)")}>
-              <PlusIcon /> {t("New")}
-            </button>
+            {canWrite && (
+              <>
+                <button type="button" className="pill shrink-0" onClick={refund} title={t("Refund (R)")}>
+                  <Undo2Icon /> {t("Refund")}
+                </button>
+                <button type="button" className="pill dark shrink-0" onClick={quickAdd} title={t("New entry (N)")}>
+                  <PlusIcon /> {t("New")}
+                </button>
+              </>
+            )}
           </>
         )}
       </div>
@@ -416,7 +427,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
           <thead>
             <tr>
               <th className="!px-0">
-                <span className={cn("grid place-items-center", !selected.size && "opacity-0 hover:opacity-100 focus-within:opacity-100")}>
+                <span className={cn("grid place-items-center", !selected.size && "opacity-0 hover:opacity-100 focus-within:opacity-100", !canWrite && "hidden")}>
                   <Checkbox aria-label={t("Select all")} checked={allSelected} onCheckedChange={(c) => setSelected(c ? new Set(shown.map((e) => e.id)) : new Set())} />
                 </span>
               </th>
@@ -431,7 +442,21 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
           </thead>
           <tbody>
             {entries === null && <SkeletonRows />}
-            {shown.map((e, i) => (
+            {!canWrite &&
+              shown.map((e, i) => (
+                // Only viewing: the same row, as text.
+                <tr key={e.id} className="row">
+                  <td />
+                  <td className="px-3 font-medium">{e.name}</td>
+                  <td className="px-3">{e.type && <Tag name={e.type} color={optionColor(options, "type", e.type)} className="!shadow-none !bg-transparent !px-0" />}</td>
+                  <td className={cn("px-3 text-right tabular-nums", e.amount < 0 && "text-good")}>{plainAmount(e.amount)}</td>
+                  <td className={cn("px-3 tabular-nums", order.startsWith("date") && i > 0 && shown[i - 1].date === e.date && "opacity-45")}>
+                    {dateLabel(e.date, { month: "short", day: "numeric" })} <span className="text-[12px] text-muted-foreground">{dateLabel(e.date, { weekday: "short" })}</span>
+                  </td>
+                  <td className="px-3">{e.card && <Tag name={e.card} color={optionColor(options, "card", e.card)} className="!shadow-none !bg-transparent !px-0" />}</td>
+                </tr>
+              ))}
+            {canWrite && shown.map((e, i) => (
               <tr key={e.id} className="row" data-selected={selected.has(e.id)}>
                 <td>
                   <span className="pick grid place-items-center">
@@ -481,7 +506,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
                 }}
               />
             )}
-            {entries !== null && !drafting && (
+            {entries !== null && !drafting && canWrite && (
               <tr>
                 <td />
                 <td colSpan={5}>
@@ -532,7 +557,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
           {shown.map((e, i) => (
             <Fragment key={e.id}>
               {(i === 0 || shown[i - 1].date !== e.date) && <div className="pt-3 pb-1 text-[12px] text-ink-2">{dateLabel(e.date)}</div>}
-              <button type="button" onClick={() => editEntry(e)} className="flex w-full items-center gap-3 border-b border-rule py-2.5 text-left active:bg-wash">
+              <button type="button" disabled={!canWrite} onClick={() => editEntry(e)} className="flex w-full items-center gap-3 border-b border-rule py-2.5 text-left enabled:active:bg-wash">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-medium">{e.name}</span>
                   <span className="mt-1 flex flex-wrap gap-1.5">
