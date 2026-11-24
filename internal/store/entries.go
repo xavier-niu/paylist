@@ -308,3 +308,51 @@ func (s *Store) CountEntries(ctx context.Context, userID int64) (int, error) {
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE user_id = ?`, userID).Scan(&n)
 	return n, err
 }
+
+// Suggestion is a name used before, with how it was last entered: what the
+// New entry form offers while the name is being typed.
+type Suggestion struct {
+	Name   string  `json:"name"`
+	Type   string  `json:"type"`
+	Card   string  `json:"card"`
+	Amount float64 `json:"amount"` // the last amount
+	Date   string  `json:"date"`   // when it was last entered
+	Uses   int     `json:"uses"`   // how many entries have this name
+}
+
+// SuggestEntries finds names containing q among past purchases (refunds
+// left out), one per name with its latest entry: names starting with q
+// first, then the most used, then the most recent.
+func (s *Store) SuggestEntries(ctx context.Context, userID int64, q string, limit int) ([]Suggestion, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return []Suggestion{}, nil
+	}
+	limit = min(max(limit, 1), 20)
+	rows, err := s.db.QueryContext(ctx, `
+		WITH m AS (
+			SELECT name, type, card, amount, date,
+				COUNT(*) OVER (PARTITION BY lower(name)) AS uses,
+				ROW_NUMBER() OVER (PARTITION BY lower(name) ORDER BY date DESC, id DESC) AS rn
+			FROM entries
+			WHERE user_id = ? AND amount > 0 AND instr(lower(name), lower(?)) > 0
+		)
+		SELECT name, type, card, amount, date, uses FROM m WHERE rn = 1
+		ORDER BY instr(lower(name), lower(?)) = 1 DESC, uses DESC, date DESC, name
+		LIMIT ?`, userID, q, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Suggestion{}
+	for rows.Next() {
+		var sg Suggestion
+		var cents int64
+		if err := rows.Scan(&sg.Name, &sg.Type, &sg.Card, &cents, &sg.Date, &sg.Uses); err != nil {
+			return nil, err
+		}
+		sg.Amount = fromCents(cents)
+		out = append(out, sg)
+	}
+	return out, rows.Err()
+}

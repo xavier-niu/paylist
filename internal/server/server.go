@@ -75,6 +75,7 @@ func (s *Server) Handler() http.Handler {
 
 	// The table
 	mux.HandleFunc("GET /api/entries", s.requireUser(s.handleListEntries))
+	mux.HandleFunc("GET /api/entries/suggest", s.requireUser(s.handleSuggestEntries))
 	mux.HandleFunc("POST /api/entries", s.requireUser(s.handleCreateEntry))
 	mux.HandleFunc("POST /api/entries/delete", s.requireUser(s.handleDeleteEntries))
 	mux.HandleFunc("PUT /api/entries/{id}", s.requireUser(s.handleUpdateEntry))

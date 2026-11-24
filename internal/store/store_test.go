@@ -204,3 +204,28 @@ func TestAllMonths(t *testing.T) {
 		t.Error("a bad month was accepted")
 	}
 }
+
+func TestSuggestEntries(t *testing.T) {
+	ctx := context.Background()
+	st, u := newStore(t)
+	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{
+		entry("Iced coffee", "Food", 25, "2026-11-20", "Alipay"),
+		entry("Coffee", "Food", 18, "2026-11-01", "Cash"),
+		entry("coffee", "Food", 19.5, "2026-11-10", "Credit card"),
+		entry("Coffee", "", -18, "2026-11-12", ""), // a refund: not a suggestion
+		entry("Lunch", "Food", 35, "2026-11-11", "Alipay"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.SuggestEntries(ctx, u.ID, "COF", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// "coffee" starts with the text and was entered twice, so it leads, with its latest entry.
+	if len(got) != 2 || got[0].Name != "coffee" || got[0].Uses != 2 || got[0].Amount != 19.5 || got[0].Card != "Credit card" || got[1].Name != "Iced coffee" {
+		t.Errorf("suggestions: %+v", got)
+	}
+	if none, _ := st.SuggestEntries(ctx, u.ID, "  ", 5); len(none) != 0 {
+		t.Errorf("blank text: %+v", none)
+	}
+}

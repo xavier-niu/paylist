@@ -54,6 +54,20 @@ func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"month": month, "entries": entries})
 }
 
+// handleSuggestEntries: ?q= part of a name; past purchases whose name holds it, one per name.
+func (s *Server) handleSuggestEntries(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit == 0 {
+		limit = 6
+	}
+	out, err := s.opts.Store.SuggestEntries(r.Context(), currentUser(r.Context()).ID, r.URL.Query().Get("q"), limit)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) handleCreateEntry(w http.ResponseWriter, r *http.Request) {
 	var in store.EntryInput
 	if !decode(w, r, &in) {

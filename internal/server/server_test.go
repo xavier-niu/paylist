@@ -158,8 +158,16 @@ func TestTableAPI(t *testing.T) {
 		t.Errorf("csv: %s", body)
 	}
 
+	// The New entry form's suggestions: this account's names only.
+	if sg := decodeJSON[[]store.Suggestion](t, e.do(t, c, "GET", "/api/entries/suggest?q=lun", nil)); len(sg) != 1 || sg[0].Name != "Lunch" || sg[0].Amount != 30 || sg[0].Card != "Visa" {
+		t.Errorf("suggest: %+v", sg)
+	}
+
 	// Another account can't see or change it.
 	other := e.signIn(t, "b@example.com")
+	if sg := decodeJSON[[]store.Suggestion](t, e.do(t, other, "GET", "/api/entries/suggest?q=lun", nil)); len(sg) != 0 {
+		t.Errorf("other's suggestions: %+v", sg)
+	}
 	if code := status(t, e.do(t, other, "PUT", "/api/entries/"+itoa(created.ID), map[string]any{"amount": 1})); code != 404 {
 		t.Errorf("other's update: %d", code)
 	}
