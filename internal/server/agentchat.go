@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -191,7 +192,7 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 		today = t
 	}
 
-	session, closeSession, err := s.agentSession(r.Context(), u)
+	session, closeSession, err := s.agentSession(r.Context(), u, currentLedger(r.Context()))
 	if err != nil {
 		s.internalError(w, err)
 		return
@@ -213,7 +214,8 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 	}
 	save(history)
 
-	system := agent.SystemPrompt(today, u.Prefs.Currency)
+	l := currentLedger(r.Context())
+	system := agent.SystemPrompt(today, l.Name, l.Currency, l.Role)
 	history, err = agent.Run(r.Context(), client, session, system, history, func(e agent.Event) error {
 		return nd.send(e)
 	})
@@ -230,8 +232,10 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 }
 
 // agentSession connects an MCP client to a server whose tools work on u's table.
-func (s *Server) agentSession(ctx context.Context, u *store.User) (*mcp.ClientSession, func(), error) {
-	srv := s.newMCPServer(func(*mcp.CallToolRequest) (*store.User, error) { return u, nil })
+func (s *Server) agentSession(ctx context.Context, u *store.User, l *store.Ledger) (*mcp.ClientSession, func(), error) {
+	// The agent works on the ledger open on the page, unless asked about another.
+	def := strconv.FormatInt(l.ID, 10)
+	srv := s.newMCPServer(func(*mcp.CallToolRequest) (*store.User, string, error) { return u, def, nil })
 	clientT, serverT := mcp.NewInMemoryTransports()
 	ss, err := srv.Connect(ctx, serverT, nil)
 	if err != nil {

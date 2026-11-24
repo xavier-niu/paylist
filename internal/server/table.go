@@ -46,7 +46,7 @@ func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, sentence(err))
 		return
 	}
-	entries, err := s.opts.Store.ListEntries(r.Context(), currentUser(r.Context()).ID, f)
+	entries, err := s.opts.Store.ListEntries(r.Context(), currentLedger(r.Context()).ID, f)
 	if err != nil {
 		s.internalError(w, err)
 		return
@@ -60,7 +60,7 @@ func (s *Server) handleSuggestEntries(w http.ResponseWriter, r *http.Request) {
 	if limit == 0 {
 		limit = 6
 	}
-	out, err := s.opts.Store.SuggestEntries(r.Context(), currentUser(r.Context()).ID, r.URL.Query().Get("q"), limit)
+	out, err := s.opts.Store.SuggestEntries(r.Context(), currentLedger(r.Context()).ID, r.URL.Query().Get("q"), limit)
 	if err != nil {
 		s.internalError(w, err)
 		return
@@ -73,7 +73,7 @@ func (s *Server) handleCreateEntry(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	out, err := s.opts.Store.CreateEntries(r.Context(), currentUser(r.Context()).ID, []store.EntryInput{in})
+	out, err := s.opts.Store.CreateEntries(r.Context(), currentLedger(r.Context()).ID, []store.EntryInput{in})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, sentence(err))
 		return
@@ -99,7 +99,7 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	e, err := s.opts.Store.UpdateEntry(r.Context(), currentUser(r.Context()).ID, id, in)
+	e, err := s.opts.Store.UpdateEntry(r.Context(), currentLedger(r.Context()).ID, id, in)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "No such entry.")
 		return
@@ -116,7 +116,7 @@ func (s *Server) handleDeleteEntry(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	n, err := s.opts.Store.DeleteEntries(r.Context(), currentUser(r.Context()).ID, []int64{id})
+	n, err := s.opts.Store.DeleteEntries(r.Context(), currentLedger(r.Context()).ID, []int64{id})
 	if err != nil {
 		s.internalError(w, err)
 		return
@@ -135,7 +135,7 @@ func (s *Server) handleDeleteEntries(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	n, err := s.opts.Store.DeleteEntries(r.Context(), currentUser(r.Context()).ID, req.IDs)
+	n, err := s.opts.Store.DeleteEntries(r.Context(), currentLedger(r.Context()).ID, req.IDs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, sentence(err))
 		return
@@ -150,7 +150,7 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, sentence(err))
 		return
 	}
-	entries, err := s.opts.Store.ListEntries(r.Context(), currentUser(r.Context()).ID, f)
+	entries, err := s.opts.Store.ListEntries(r.Context(), currentLedger(r.Context()).ID, f)
 	if err != nil {
 		s.internalError(w, err)
 		return
@@ -180,7 +180,7 @@ func csvSafe(v string) string {
 // ---------------------------------------------------------------- options
 
 func (s *Server) handleListOptions(w http.ResponseWriter, r *http.Request) {
-	opts, err := s.opts.Store.ListOptions(r.Context(), currentUser(r.Context()).ID)
+	opts, err := s.opts.Store.ListOptions(r.Context(), currentLedger(r.Context()).ID)
 	if err != nil {
 		s.internalError(w, err)
 		return
@@ -197,7 +197,7 @@ func (s *Server) handleCreateOption(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	o, err := s.opts.Store.CreateOption(r.Context(), currentUser(r.Context()).ID, req.Kind, req.Name, req.Color)
+	o, err := s.opts.Store.CreateOption(r.Context(), currentLedger(r.Context()).ID, req.Kind, req.Name, req.Color)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, sentence(err))
 		return
@@ -217,7 +217,7 @@ func (s *Server) handleUpdateOption(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	o, err := s.opts.Store.UpdateOption(r.Context(), currentUser(r.Context()).ID, id, req.Name, req.Color)
+	o, err := s.opts.Store.UpdateOption(r.Context(), currentLedger(r.Context()).ID, id, req.Name, req.Color)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "No such option.")
 		return
@@ -234,7 +234,7 @@ func (s *Server) handleDeleteOption(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_, cleared, err := s.opts.Store.DeleteOption(r.Context(), currentUser(r.Context()).ID, id)
+	_, cleared, err := s.opts.Store.DeleteOption(r.Context(), currentLedger(r.Context()).ID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "No such option.")
 		return
@@ -268,7 +268,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	if t, err := store.ParseDate(q.Get("today")); err == nil {
 		today = t // the browser's date, which can differ from the server's
 	}
-	st, err := s.opts.Store.GetStats(r.Context(), currentUser(r.Context()).ID, month, months, today)
+	st, err := s.opts.Store.GetStats(r.Context(), currentLedger(r.Context()).ID, month, months, today)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, sentence(err))
 		return
@@ -283,7 +283,7 @@ func (s *Server) handleMonths(w http.ResponseWriter, r *http.Request) {
 	if upTo == "" {
 		upTo = time.Now().Format("2006-01")
 	}
-	months, err := s.opts.Store.AllMonths(r.Context(), currentUser(r.Context()).ID, upTo)
+	months, err := s.opts.Store.AllMonths(r.Context(), currentLedger(r.Context()).ID, upTo)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, sentence(err))
 		return
@@ -312,7 +312,7 @@ func (s *Server) handleRefundMatches(w http.ResponseWriter, r *http.Request) {
 		}
 		amount = &n
 	}
-	out, err := s.opts.Store.RefundMatches(r.Context(), currentUser(r.Context()).ID, q.Get("name"), amount, requestToday(q.Get("today")), 5)
+	out, err := s.opts.Store.RefundMatches(r.Context(), currentLedger(r.Context()).ID, q.Get("name"), amount, requestToday(q.Get("today")), 5)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, sentence(err))
 		return
@@ -329,7 +329,7 @@ func (s *Server) handleRefund(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	res, err := s.opts.Store.Refund(r.Context(), currentUser(r.Context()).ID, req.RefundInput, requestToday(req.Today))
+	res, err := s.opts.Store.Refund(r.Context(), currentLedger(r.Context()).ID, req.RefundInput, requestToday(req.Today))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "No such entry.")
 		return

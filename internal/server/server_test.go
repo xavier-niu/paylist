@@ -78,6 +78,26 @@ func (e *env) do(t *testing.T, c *http.Client, method, path string, body any) *h
 	return resp
 }
 
+// doIn is do on a ledger (the X-Paylist-Ledger header).
+func (e *env) doIn(t *testing.T, c *http.Client, ledger int64, method, path string, body any) *http.Response {
+	t.Helper()
+	var r io.Reader
+	if body != nil {
+		buf, _ := json.Marshal(body)
+		r = bytes.NewReader(buf)
+	}
+	req, _ := http.NewRequest(method, e.srv.URL+path, r)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("X-Paylist-Ledger", itoa(ledger))
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
 func status(t *testing.T, resp *http.Response) int {
 	t.Helper()
 	resp.Body.Close()
@@ -267,7 +287,7 @@ func TestMCP(t *testing.T) {
 	}
 	defer s.Close()
 	tools, err := s.ListTools(t.Context(), nil)
-	if err != nil || len(tools.Tools) != 11 {
+	if err != nil || len(tools.Tools) != 12 {
 		t.Fatalf("tools: %v %v", tools, err)
 	}
 
@@ -323,6 +343,35 @@ func TestMCP(t *testing.T) {
 	del, _ := callTool[mcpDeleteOut](t, s, "delete_entries", map[string]any{"ids": []int64{ref.Added.ID, added.Added[1].ID}})
 	if del.Deleted != 2 {
 		t.Errorf("deleted %d", del.Deleted)
+	}
+	// Ledgers: by name, and a viewer can't change one.
+	u, _ := e.st.GetUserByEmail(t.Context(), "mcp@example.com")
+	if _, err := e.st.CreateLedger(t.Context(), u.ID, "Trip", "JPY"); err != nil {
+		t.Fatal(err)
+	}
+	other, _ := e.st.CreateUser(t.Context(), "owner@example.com", "", "password1", false)
+	shared, _ := e.st.CreateLedger(t.Context(), other.ID, "Family", "CNY")
+	if _, err := e.st.AddLedgerMember(t.Context(), shared.ID, "mcp@example.com", "viewer"); err != nil {
+		t.Fatal(err)
+	}
+	ls, _ := callTool[mcpLedgersOut](t, s, "list_ledgers", map[string]any{})
+	if len(ls.Ledgers) != 3 {
+		t.Errorf("ledgers: %+v", ls)
+	}
+	if out, msg := callTool[mcpAddOut](t, s, "add_entries", map[string]any{"ledger": "trip", "entries": []any{map[string]any{"name": "Ramen", "amount": 1200}}}); msg != "" || len(out.Added) != 1 {
+		t.Errorf("adding to Trip: %+v %s", out, msg)
+	}
+	if p, _ := callTool[mcpProfileOut](t, s, "get_profile", map[string]any{"ledger": "Trip"}); p.Currency != "JPY" || p.Role != "owner" {
+		t.Errorf("Trip's profile: %+v", p)
+	}
+	if _, msg := callTool[mcpAddOut](t, s, "add_entries", map[string]any{"ledger": "Family", "entries": []any{map[string]any{"name": "x", "amount": 1}}}); !strings.Contains(msg, "only view") {
+		t.Errorf("a viewer adding: %q", msg)
+	}
+	if list, msg := callTool[mcpListOut](t, s, "list_entries", map[string]any{"ledger": "Family"}); msg != "" || list.Count != 0 {
+		t.Errorf("a viewer reading: %+v %s", list, msg)
+	}
+	if _, msg := callTool[mcpListOut](t, s, "list_entries", map[string]any{"ledger": "Nope"}); !strings.Contains(msg, "no ledger") {
+		t.Errorf("a ledger they don't have: %q", msg)
 	}
 }
 
@@ -428,5 +477,84 @@ func TestPrefs(t *testing.T) {
 	}](t, e.do(t, c, "GET", "/api/me", nil))
 	if me.User.Prefs.LedgerOrder != "amount-desc" {
 		t.Errorf("me: %+v", me.User.Prefs)
+	}
+}
+
+func TestLedgersAPI(t *testing.T) {
+	e := newEnv(t)
+	a := e.signIn(t, "ann@example.com")
+	b := e.signIn(t, "ben@example.com")
+	type ledgers struct {
+		Ledgers []store.Ledger `json:"ledgers"`
+		Current int64          `json:"current"`
+	}
+	mine := decodeJSON[ledgers](t, e.do(t, a, "GET", "/api/ledgers", nil))
+	if len(mine.Ledgers) != 1 || mine.Current != mine.Ledgers[0].ID || mine.Ledgers[0].Role != "owner" {
+		t.Fatalf("ann's ledgers: %+v", mine)
+	}
+	personal := mine.Current
+
+	// A second ledger, used through the header; the first is still the default.
+	home := decodeJSON[store.Ledger](t, e.do(t, a, "POST", "/api/ledgers", map[string]any{"name": "Home", "currency": "USD"}))
+	if home.ID == 0 || home.Currency != "USD" {
+		t.Fatalf("new ledger: %+v", home)
+	}
+	e.doIn(t, a, home.ID, "POST", "/api/entries", map[string]any{"name": "Sofa", "amount": 900, "date": "2026-11-02"}).Body.Close()
+	if got := decodeJSON[entriesPage](t, e.doIn(t, a, home.ID, "GET", "/api/entries?month=2026-11", nil)); len(got.Entries) != 1 {
+		t.Errorf("home's entries: %+v", got)
+	}
+	if got := decodeJSON[entriesPage](t, e.do(t, a, "GET", "/api/entries?month=2026-11", nil)); len(got.Entries) != 0 {
+		t.Errorf("the default ledger's entries: %+v", got)
+	}
+	// Switching makes it the default.
+	e.do(t, a, "PUT", "/api/me/prefs", map[string]any{"ledger_id": home.ID}).Body.Close()
+	if got := decodeJSON[ledgers](t, e.do(t, a, "GET", "/api/ledgers", nil)); got.Current != home.ID {
+		t.Errorf("current after switching: %+v", got)
+	}
+
+	// Ben can't see it until it's shared with him; as a viewer he can read, not write.
+	if code := status(t, e.doIn(t, b, home.ID, "GET", "/api/entries", nil)); code != 404 {
+		t.Errorf("an outsider: %d", code)
+	}
+	if code := status(t, e.do(t, b, "POST", "/api/ledgers/"+itoa(home.ID)+"/members", map[string]any{"email": "ben@example.com", "role": "editor"})); code != 404 {
+		t.Errorf("an outsider sharing: %d", code)
+	}
+	if code := status(t, e.do(t, a, "POST", "/api/ledgers/"+itoa(home.ID)+"/members", map[string]any{"email": "nobody@example.com", "role": "viewer"})); code != 400 {
+		t.Errorf("sharing with nobody: %d", code)
+	}
+	ben := decodeJSON[store.LedgerMember](t, e.do(t, a, "POST", "/api/ledgers/"+itoa(home.ID)+"/members", map[string]any{"email": "ben@example.com", "role": "viewer"}))
+	if got := decodeJSON[entriesPage](t, e.doIn(t, b, home.ID, "GET", "/api/entries?month=2026-11", nil)); len(got.Entries) != 1 {
+		t.Errorf("the viewer reads: %+v", got)
+	}
+	if code := status(t, e.doIn(t, b, home.ID, "POST", "/api/entries", map[string]any{"name": "x", "amount": 1, "date": "2026-11-03"})); code != 403 {
+		t.Errorf("the viewer writes: %d", code)
+	}
+	if code := status(t, e.do(t, b, "PUT", "/api/ledgers/"+itoa(home.ID), map[string]any{"name": "Mine now"})); code != 403 {
+		t.Errorf("the viewer renames: %d", code)
+	}
+	// Made an editor, he can write; the agent's tools follow the same rule.
+	e.do(t, a, "PUT", "/api/ledgers/"+itoa(home.ID)+"/members/"+itoa(ben.UserID), map[string]any{"role": "editor"}).Body.Close()
+	if code := status(t, e.doIn(t, b, home.ID, "POST", "/api/entries", map[string]any{"name": "Lamp", "amount": 40, "date": "2026-11-03"})); code != 201 {
+		t.Errorf("the editor writes: %d", code)
+	}
+	if ms := decodeJSON[[]store.LedgerMember](t, e.do(t, b, "GET", "/api/ledgers/"+itoa(home.ID)+"/members", nil)); len(ms) != 2 || ms[0].Email != "ann@example.com" || ms[1].Role != "editor" {
+		t.Errorf("members: %+v", ms)
+	}
+	// He leaves; she can't delete her only other ledger... but can delete this one.
+	if code := status(t, e.do(t, b, "DELETE", "/api/ledgers/"+itoa(home.ID)+"/members/"+itoa(ben.UserID), nil)); code != 200 {
+		t.Errorf("leaving: %d", code)
+	}
+	if code := status(t, e.doIn(t, b, home.ID, "GET", "/api/entries", nil)); code != 404 {
+		t.Errorf("after leaving: %d", code)
+	}
+	if code := status(t, e.do(t, a, "DELETE", "/api/ledgers/"+itoa(home.ID), nil)); code != 200 {
+		t.Errorf("deleting: %d", code)
+	}
+	if code := status(t, e.do(t, a, "DELETE", "/api/ledgers/"+itoa(personal), nil)); code != 400 {
+		t.Errorf("deleting the last ledger: %d", code)
+	}
+	// The default falls back to the ledger that's left.
+	if got := decodeJSON[ledgers](t, e.do(t, a, "GET", "/api/ledgers", nil)); got.Current != personal {
+		t.Errorf("current after deleting: %+v", got)
 	}
 }

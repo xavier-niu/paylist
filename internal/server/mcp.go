@@ -26,23 +26,25 @@ import (
 // Streamable HTTP, without sessions: each request is a whole exchange,
 // answered with JSON.
 
-const mcpInstructions = `Paylist is the user's personal spending ledger. Each entry has a name, a type, an amount, a date (YYYY-MM-DD) and the card it was paid with; type and card are choices from lists of options. The ledger is kept month by month. get_profile gives the user's currency and today's date.
+const mcpInstructions = `Paylist is the user's personal spending ledger. Each entry has a name, a type, an amount, a date (YYYY-MM-DD) and the card it was paid with; type and card are choices from lists of options. The ledger is kept month by month. The user may have several ledgers, their own and others shared with them (list_ledgers); every tool takes one by name or id, and without one uses the ledger last open in Paylist. A viewer can only read a ledger. get_profile gives a ledger's currency and today's date.
 
 Read it with list_entries (one month, a date range, a type, a card or a name), get_stats (a month's totals by day, by type and by card, and the months before) and list_months (every month with entries). Change it with add_entries (several at once), update_entry and delete_entries. list_options shows the types and cards; manage_option creates, renames, recolors or deletes one.
 
 When adding entries, reuse an existing type and card whose name fits before making new ones; when the user names something without its amount, type or card, suggest_entries shows how it was entered before. For a refund, use refund: it deletes the purchase it undoes, or records the refund as a negative amount when no purchase matches. Delete only what the user asked to delete.`
 
-// The user whose ledger a tool works on.
-type mcpCallerFunc func(req *mcp.CallToolRequest) (*store.User, error)
+// The user a tool works for, and the ledger to use when a call names none
+// (empty: the one they had open last).
+type mcpCallerFunc func(req *mcp.CallToolRequest) (*store.User, string, error)
 
 type mcpListIn struct {
-	Month string `json:"month,omitempty" jsonschema:"the month to list, YYYY-MM; the current month when neither month nor from/to is given"`
-	From  string `json:"from,omitempty" jsonschema:"first date to include, YYYY-MM-DD (instead of month)"`
-	To    string `json:"to,omitempty" jsonschema:"last date to include, YYYY-MM-DD (instead of month)"`
-	Type  string `json:"type,omitempty" jsonschema:"only entries of this type"`
-	Card  string `json:"card,omitempty" jsonschema:"only entries paid with this card"`
-	Query string `json:"query,omitempty" jsonschema:"only entries whose name contains this"`
-	Limit int    `json:"limit,omitempty" jsonschema:"at most this many entries (default 500)"`
+	Ledger string `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
+	Month  string `json:"month,omitempty" jsonschema:"the month to list, YYYY-MM; the current month when neither month nor from/to is given"`
+	From   string `json:"from,omitempty" jsonschema:"first date to include, YYYY-MM-DD (instead of month)"`
+	To     string `json:"to,omitempty" jsonschema:"last date to include, YYYY-MM-DD (instead of month)"`
+	Type   string `json:"type,omitempty" jsonschema:"only entries of this type"`
+	Card   string `json:"card,omitempty" jsonschema:"only entries paid with this card"`
+	Query  string `json:"query,omitempty" jsonschema:"only entries whose name contains this"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"at most this many entries (default 500)"`
 }
 
 type mcpListOut struct {
@@ -62,6 +64,7 @@ type mcpNewEntry struct {
 }
 
 type mcpAddIn struct {
+	Ledger  string        `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
 	Entries []mcpNewEntry `json:"entries" jsonschema:"the entries to add (1 to 500)"`
 }
 
@@ -70,6 +73,7 @@ type mcpAddOut struct {
 }
 
 type mcpUpdateIn struct {
+	Ledger string   `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
 	ID     int64    `json:"id" jsonschema:"the entry's id, from list_entries"`
 	Name   *string  `json:"name,omitempty" jsonschema:"a new name"`
 	Amount *float64 `json:"amount,omitempty" jsonschema:"a new amount"`
@@ -79,7 +83,8 @@ type mcpUpdateIn struct {
 }
 
 type mcpDeleteIn struct {
-	IDs []int64 `json:"ids" jsonschema:"the ids of the entries to delete"`
+	Ledger string  `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
+	IDs    []int64 `json:"ids" jsonschema:"the ids of the entries to delete"`
 }
 
 type mcpDeleteOut struct {
@@ -87,6 +92,7 @@ type mcpDeleteOut struct {
 }
 
 type mcpOptionIn struct {
+	Ledger  string `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
 	Kind    string `json:"kind" jsonschema:"type or card"`
 	Action  string `json:"action" jsonschema:"create, rename, recolor or delete"`
 	Name    string `json:"name" jsonschema:"the option's name (for create, the new option's)"`
@@ -100,8 +106,9 @@ type mcpOptionOut struct {
 }
 
 type mcpSuggestIn struct {
-	Query string `json:"query" jsonschema:"part of a name, such as coffee"`
-	Limit int    `json:"limit,omitempty" jsonschema:"at most this many names (default 6, up to 20)"`
+	Ledger string `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
+	Query  string `json:"query" jsonschema:"part of a name, such as coffee"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"at most this many names (default 6, up to 20)"`
 }
 
 type mcpSuggestOut struct {
@@ -113,6 +120,7 @@ type mcpMonthsOut struct {
 }
 
 type mcpRefundIn struct {
+	Ledger string   `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
 	ID     int64    `json:"id,omitempty" jsonschema:"a purchase's id (from list_entries, or from the matches of an earlier call), to refund that one"`
 	Name   string   `json:"name,omitempty" jsonschema:"the purchase's name, as entered (case doesn't matter)"`
 	Amount *float64 `json:"amount,omitempty" jsonschema:"how much came back"`
@@ -123,13 +131,25 @@ type mcpRefundIn struct {
 
 type mcpProfileOut struct {
 	Name     string `json:"name,omitempty"`
-	Currency string `json:"currency" jsonschema:"the ISO 4217 code amounts are in, such as CNY or USD"`
+	Ledger   string `json:"ledger" jsonschema:"the ledger this answer is about"`
+	Role     string `json:"role" jsonschema:"the user's role in it: owner, editor or viewer (a viewer can only read)"`
+	Currency string `json:"currency" jsonschema:"the ISO 4217 code the ledger's amounts are in, such as CNY or USD"`
 	Language string `json:"language" jsonschema:"en, zh, or system (the browser's)"`
 	Today    string `json:"today" jsonschema:"today's date, YYYY-MM-DD"`
 	Weekday  string `json:"weekday"`
 }
 
+// mcpLedgerIn is a tool's input that is only which ledger.
+type mcpLedgerIn struct {
+	Ledger string `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
+}
+
+type mcpLedgersOut struct {
+	Ledgers []store.Ledger `json:"ledgers" jsonschema:"the user's ledgers: their own and those shared with them, with the user's role in each (owner, editor or viewer; a viewer can only read)"`
+}
+
 type mcpStatsIn struct {
+	Ledger string `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
 	Month  string `json:"month,omitempty" jsonschema:"the month, YYYY-MM; the current month when left out"`
 	Months int    `json:"months,omitempty" jsonschema:"how many months of monthly totals to include, up to this one (1 to 36, default 12)"`
 }
@@ -141,6 +161,27 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		&mcp.ServerOptions{Instructions: mcpInstructions})
 	yes, no := true, false
 	st := s.opts.Store
+	// ledger is the ledger a call works on, if the user has it and, to change it, may.
+	ledger := func(ctx context.Context, req *mcp.CallToolRequest, want string, write bool) (*store.Ledger, error) {
+		u, def, err := caller(req)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(want) == "" {
+			want = def
+		}
+		l, err := s.pickLedger(ctx, u, want)
+		if errors.Is(err, store.ErrNotMember) {
+			return nil, fmt.Errorf("you have no ledger %q; list_ledgers shows yours", want)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if write && !l.CanWrite() {
+			return nil, fmt.Errorf("you can only view the ledger %q", l.Name)
+		}
+		return l, nil
+	}
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "list_entries",
@@ -148,7 +189,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"or a date range, optionally only one type, one card or names containing a query.",
 		Annotations: &mcp.ToolAnnotations{Title: "List entries", ReadOnlyHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpListIn) (*mcp.CallToolResult, mcpListOut, error) {
-		u, err := caller(req)
+		l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, mcpListOut{}, err
 		}
@@ -164,7 +205,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		if f.Limit <= 0 || f.Limit > 500 {
 			f.Limit = 500
 		}
-		entries, err := st.ListEntries(ctx, u.ID, f)
+		entries, err := st.ListEntries(ctx, l.ID, f)
 		if err != nil {
 			return nil, mcpListOut{}, err
 		}
@@ -183,7 +224,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"A type or card that isn't an option yet becomes one, so reuse existing names (list_options) where they fit.",
 		Annotations: &mcp.ToolAnnotations{Title: "Add entries", DestructiveHint: &no, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpAddIn) (*mcp.CallToolResult, mcpAddOut, error) {
-		u, err := caller(req)
+		l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, mcpAddOut{}, err
 		}
@@ -196,7 +237,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			}
 			ins = append(ins, store.EntryInput{Name: &e.Name, Amount: &e.Amount, Date: &e.Date, Type: &e.Type, Card: &e.Card})
 		}
-		added, err := st.CreateEntries(ctx, u.ID, ins)
+		added, err := st.CreateEntries(ctx, l.ID, ins)
 		if err != nil {
 			return nil, mcpAddOut{}, errors.New(sentence(err))
 		}
@@ -208,11 +249,11 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		Description: "Change an entry of the spending ledger: only the fields given change. An empty type or card clears it.",
 		Annotations: &mcp.ToolAnnotations{Title: "Update an entry", DestructiveHint: &yes, IdempotentHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpUpdateIn) (*mcp.CallToolResult, store.Entry, error) {
-		u, err := caller(req)
+		l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, store.Entry{}, err
 		}
-		e, err := st.UpdateEntry(ctx, u.ID, in.ID, store.EntryInput{Name: in.Name, Amount: in.Amount, Date: in.Date, Type: in.Type, Card: in.Card})
+		e, err := st.UpdateEntry(ctx, l.ID, in.ID, store.EntryInput{Name: in.Name, Amount: in.Amount, Date: in.Date, Type: in.Type, Card: in.Card})
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, store.Entry{}, fmt.Errorf("there is no entry %d", in.ID)
 		}
@@ -227,11 +268,11 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		Description: "Delete entries from the spending ledger by id. This can't be undone.",
 		Annotations: &mcp.ToolAnnotations{Title: "Delete entries", DestructiveHint: &yes, IdempotentHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpDeleteIn) (*mcp.CallToolResult, mcpDeleteOut, error) {
-		u, err := caller(req)
+		l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, mcpDeleteOut{}, err
 		}
-		n, err := st.DeleteEntries(ctx, u.ID, in.IDs)
+		n, err := st.DeleteEntries(ctx, l.ID, in.IDs)
 		if err != nil {
 			return nil, mcpDeleteOut{}, errors.New(sentence(err))
 		}
@@ -242,12 +283,12 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		Name:        "list_options",
 		Description: "List the options for an entry's type and card, with their colors and how many entries use each.",
 		Annotations: &mcp.ToolAnnotations{Title: "List options", ReadOnlyHint: true, OpenWorldHint: &no},
-	}, func(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, store.Options, error) {
-		u, err := caller(req)
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpLedgerIn) (*mcp.CallToolResult, store.Options, error) {
+		l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, store.Options{}, err
 		}
-		opts, err := st.ListOptions(ctx, u.ID)
+		opts, err := st.ListOptions(ctx, l.ID)
 		return nil, opts, err
 	})
 
@@ -257,18 +298,18 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"deleting clears it from the entries that had it.",
 		Annotations: &mcp.ToolAnnotations{Title: "Manage an option", DestructiveHint: &yes, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpOptionIn) (*mcp.CallToolResult, mcpOptionOut, error) {
-		u, err := caller(req)
+		l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, mcpOptionOut{}, err
 		}
 		if in.Action == "create" {
-			o, err := st.CreateOption(ctx, u.ID, in.Kind, in.Name, in.Color)
+			o, err := st.CreateOption(ctx, l.ID, in.Kind, in.Name, in.Color)
 			if err != nil {
 				return nil, mcpOptionOut{}, errors.New(sentence(err))
 			}
 			return nil, mcpOptionOut{Option: o}, nil
 		}
-		o, err := st.FindOption(ctx, u.ID, in.Kind, in.Name)
+		o, err := st.FindOption(ctx, l.ID, in.Kind, in.Name)
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, mcpOptionOut{}, fmt.Errorf("there is no %s option called %q", in.Kind, in.Name)
 		}
@@ -277,12 +318,12 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		}
 		switch in.Action {
 		case "rename":
-			o, err = st.UpdateOption(ctx, u.ID, o.ID, &in.NewName, nil)
+			o, err = st.UpdateOption(ctx, l.ID, o.ID, &in.NewName, nil)
 		case "recolor":
-			o, err = st.UpdateOption(ctx, u.ID, o.ID, nil, &in.Color)
+			o, err = st.UpdateOption(ctx, l.ID, o.ID, nil, &in.Color)
 		case "delete":
 			var cleared int64
-			if _, cleared, err = st.DeleteOption(ctx, u.ID, o.ID); err == nil {
+			if _, cleared, err = st.DeleteOption(ctx, l.ID, o.ID); err == nil {
 				return nil, mcpOptionOut{Cleared: cleared}, nil
 			}
 		default:
@@ -301,7 +342,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"to_date with prev_to_date: in the current month they cover day 1 to compare_day of each month; otherwise the whole months.",
 		Annotations: &mcp.ToolAnnotations{Title: "Get statistics", ReadOnlyHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpStatsIn) (*mcp.CallToolResult, store.Stats, error) {
-		u, err := caller(req)
+		l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, store.Stats{}, err
 		}
@@ -311,7 +352,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		if in.Months == 0 {
 			in.Months = 12
 		}
-		stats, err := st.GetStats(ctx, u.ID, in.Month, in.Months, time.Now())
+		stats, err := st.GetStats(ctx, l.ID, in.Month, in.Months, time.Now())
 		if err != nil {
 			return nil, store.Stats{}, errors.New(sentence(err))
 		}
@@ -322,12 +363,12 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		Name:        "list_months",
 		Description: "Every month that has entries, up to the current one, newest first, with its total and count.",
 		Annotations: &mcp.ToolAnnotations{Title: "List months", ReadOnlyHint: true, OpenWorldHint: &no},
-	}, func(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, mcpMonthsOut, error) {
-		u, err := caller(req)
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpLedgerIn) (*mcp.CallToolResult, mcpMonthsOut, error) {
+		l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, mcpMonthsOut{}, err
 		}
-		months, err := st.AllMonths(ctx, u.ID, time.Now().Format("2006-01"))
+		months, err := st.AllMonths(ctx, l.ID, time.Now().Format("2006-01"))
 		return nil, mcpMonthsOut{Months: months}, err
 	})
 
@@ -337,14 +378,14 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"and how often. Use it to fill in what the user leaves out when adding something they've bought before.",
 		Annotations: &mcp.ToolAnnotations{Title: "Suggest entries", ReadOnlyHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpSuggestIn) (*mcp.CallToolResult, mcpSuggestOut, error) {
-		u, err := caller(req)
+		l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, mcpSuggestOut{}, err
 		}
 		if in.Limit <= 0 {
 			in.Limit = 6
 		}
-		out, err := st.SuggestEntries(ctx, u.ID, in.Query, in.Limit)
+		out, err := st.SuggestEntries(ctx, l.ID, in.Query, in.Limit)
 		return nil, mcpSuggestOut{Suggestions: out}, err
 	})
 
@@ -356,11 +397,11 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"the right id (ask the user if unsure); if none match, the refund is added as a negative amount and returned as added.",
 		Annotations: &mcp.ToolAnnotations{Title: "Refund", DestructiveHint: &yes, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpRefundIn) (*mcp.CallToolResult, store.RefundResult, error) {
-		u, err := caller(req)
+		l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, store.RefundResult{}, err
 		}
-		res, err := st.Refund(ctx, u.ID, store.RefundInput{ID: in.ID, Name: in.Name, Amount: in.Amount, Type: in.Type, Card: in.Card, Date: in.Date}, time.Now())
+		res, err := st.Refund(ctx, l.ID, store.RefundInput{ID: in.ID, Name: in.Name, Amount: in.Amount, Type: in.Type, Card: in.Card, Date: in.Date}, time.Now())
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, store.RefundResult{}, fmt.Errorf("there is no entry %d", in.ID)
 		}
@@ -371,29 +412,46 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_ledgers",
+		Description: "The user's ledgers: their own and those shared with them, with their role in each. Other tools take a ledger by name or id; without one they use the ledger last open in Paylist.",
+		Annotations: &mcp.ToolAnnotations{Title: "List ledgers", ReadOnlyHint: true, OpenWorldHint: &no},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, mcpLedgersOut, error) {
+		u, _, err := caller(req)
+		if err != nil {
+			return nil, mcpLedgersOut{}, err
+		}
+		ls, err := st.ListLedgers(ctx, u.ID)
+		return nil, mcpLedgersOut{Ledgers: ls}, err
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "get_profile",
-		Description: "The user's currency and language, and today's date: what amounts are in and what \"today\" means.",
+		Description: "The ledger's name, currency and the user's role in it, the user's language, and today's date: what amounts are in and what \"today\" means.",
 		Annotations: &mcp.ToolAnnotations{Title: "Get the profile", ReadOnlyHint: true, OpenWorldHint: &no},
-	}, func(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, mcpProfileOut, error) {
-		u, err := caller(req)
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpLedgerIn) (*mcp.CallToolResult, mcpProfileOut, error) {
+		u, _, err := caller(req)
+		if err != nil {
+			return nil, mcpProfileOut{}, err
+		}
+		l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, mcpProfileOut{}, err
 		}
 		now := time.Now()
-		return nil, mcpProfileOut{Name: u.Name, Currency: u.Prefs.Currency, Language: u.Prefs.Language, Today: now.Format("2006-01-02"), Weekday: now.Weekday().String()}, nil
+		return nil, mcpProfileOut{Name: u.Name, Ledger: l.Name, Role: l.Role, Currency: l.Currency, Language: u.Prefs.Language, Today: now.Format("2006-01-02"), Weekday: now.Weekday().String()}, nil
 	})
 	return srv
 }
 
 // mcpHandler serves /mcp. Requests without a valid agent token get 401.
 func (s *Server) mcpHandler() http.Handler {
-	srv := s.newMCPServer(func(req *mcp.CallToolRequest) (*store.User, error) {
+	srv := s.newMCPServer(func(req *mcp.CallToolRequest) (*store.User, string, error) {
 		if info := req.Extra.TokenInfo; info != nil {
 			if u, ok := info.Extra["user"].(*store.User); ok {
-				return u, nil
+				return u, "", nil
 			}
 		}
-		return nil, errors.New("send an agent token: Authorization: Bearer plt_…")
+		return nil, "", errors.New("send an agent token: Authorization: Bearer plt_…")
 	})
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, &mcp.StreamableHTTPOptions{
 		Stateless:    true,

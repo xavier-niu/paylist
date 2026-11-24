@@ -39,6 +39,13 @@ func (s *Server) handlePrefs(w http.ResponseWriter, r *http.Request) {
 	if req.Language == "system" || req.Language == "en" || req.Language == "zh" {
 		p.Language = req.Language
 	}
+	if req.LedgerID != 0 {
+		if _, err := s.opts.Store.GetLedger(r.Context(), u.ID, req.LedgerID); err != nil {
+			writeError(w, http.StatusNotFound, "No such ledger.")
+			return
+		}
+		p.LedgerID = req.LedgerID
+	}
 	switch req.LedgerOrder {
 	case "date-asc", "date-desc", "amount-desc", "amount-asc", "name":
 		p.LedgerOrder = req.LedgerOrder
