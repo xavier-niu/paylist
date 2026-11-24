@@ -9,7 +9,7 @@ import { OptionSelect, Tag } from "@/components/option-select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Spinner } from "@/components/ui/spinner"
-import { api, compareLabel, dateLabel, money, monthLabel, monthName, shiftMonth, thisMonth, today, type Entry, type EntryInput, type Stats } from "@/lib/api"
+import { api, compareLabel, currencySymbol, dateLabel, money, monthLabel, monthName, plainAmount, shiftMonth, thisMonth, today, type Entry, type EntryInput, type Stats } from "@/lib/api"
 import { Money } from "@/lib/money"
 import { optionColor, useApp } from "@/lib/state"
 import { cn } from "@/lib/utils"
@@ -42,8 +42,8 @@ function TextCell({ value, onSave, label, className }: { value: string; onSave: 
   )
 }
 
-/** An amount: shown in the currency, edited as a plain number. */
-function AmountCell({ value, currency, onSave, label = t("Amount") }: { value: number; currency: string; onSave: (n: number) => Promise<boolean>; label?: string }) {
+/** An amount, as a plain number (the column header names the currency). */
+function AmountCell({ value, onSave, label = t("Amount") }: { value: number; onSave: (n: number) => Promise<boolean>; label?: string }) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState("")
   const commit = async () => {
@@ -61,7 +61,7 @@ function AmountCell({ value, currency, onSave, label = t("Amount") }: { value: n
       className={cn("cell amount", value < 0 && !editing && "neg")}
       aria-label={label}
       inputMode="decimal"
-      value={editing ? text : money(value, currency)}
+      value={editing ? text : plainAmount(value)}
       onFocus={(e) => {
         setText(plain.format(value))
         setEditing(true)
@@ -81,12 +81,12 @@ function AmountCell({ value, currency, onSave, label = t("Amount") }: { value: n
   )
 }
 
-/** A date: shown as text; clicking opens the browser's date picker. */
-function DateCell({ value, onChange, label = t("Date") }: { value: string; onChange: (d: string) => void; label?: string }) {
+/** A date, "Nov 3 Tue" (faded when the row above has the same day); clicking opens the browser's date picker. */
+function DateCell({ value, onChange, label = t("Date"), faded = false }: { value: string; onChange: (d: string) => void; label?: string; faded?: boolean }) {
   const ref = useRef<HTMLInputElement>(null)
   return (
     <label
-      className="cell relative cursor-pointer tabular-nums focus-within:shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--blue)_55%,transparent)]"
+      className={cn("cell relative cursor-pointer gap-1.5 tabular-nums", faded && "opacity-45")}
       onClick={() => {
         try {
           ref.current?.showPicker?.()
@@ -95,7 +95,8 @@ function DateCell({ value, onChange, label = t("Date") }: { value: string; onCha
         }
       }}
     >
-      {dateLabel(value)}
+      <span>{dateLabel(value, { month: "short", day: "numeric" })}</span>
+      <span className="text-[12px] text-muted-foreground">{dateLabel(value, { weekday: "short" })}</span>
       <input ref={ref} type="date" aria-label={label} value={value} onChange={(e) => e.target.value && onChange(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
     </label>
   )
@@ -364,14 +365,14 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
       </div>
 
       {/* The table, from tablets up */}
-      <div className="card mt-3 hidden overflow-x-auto px-3 pt-1 pb-2 md:block">
+      <div className="card mt-3 hidden overflow-x-auto px-2 pt-1 pb-1 md:block">
         <table className="grid-table min-w-[760px]">
           <colgroup>
-            <col style={{ width: 36 }} />
+            <col style={{ width: 32 }} />
             <col />
             <col style={{ width: 170 }} />
-            <col style={{ width: 150 }} />
-            <col style={{ width: 150 }} />
+            <col style={{ width: 140 }} />
+            <col style={{ width: 140 }} />
             <col style={{ width: 170 }} />
           </colgroup>
           <thead>
@@ -383,7 +384,9 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
               </th>
               <th>{t("Name")}</th>
               <th>{t("Type")}</th>
-              <th className="!text-right">{t("Amount")}</th>
+              <th className="!text-right">
+                {t("Amount")} <span className="text-muted-foreground">{currencySymbol(currency)}</span>
+              </th>
               <th>{t("Date")}</th>
               <th>{t("Card")}</th>
             </tr>
@@ -397,7 +400,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
                 </td>
               </tr>
             )}
-            {shown.map((e) => (
+            {shown.map((e, i) => (
               <tr key={e.id} className="row" data-selected={selected.has(e.id)}>
                 <td>
                   <span className="pick grid place-items-center">
@@ -422,10 +425,14 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
                   <OptionSelect kind="type" label={t("Type")} value={e.type} options={options.types} onChange={(type) => void update(e, { type })} />
                 </td>
                 <td>
-                  <AmountCell value={e.amount} currency={currency} onSave={(amount) => update(e, { amount })} />
+                  <AmountCell value={e.amount} onSave={(amount) => update(e, { amount })} />
                 </td>
                 <td>
-                  <DateCell value={e.date} onChange={(d) => d !== e.date && void update(e, { date: d })} />
+                  <DateCell
+                    value={e.date}
+                    faded={order.startsWith("date") && i > 0 && shown[i - 1].date === e.date}
+                    onChange={(d) => d !== e.date && void update(e, { date: d })}
+                  />
                 </td>
                 <td>
                   <OptionSelect kind="card" label={t("Card")} value={e.card} options={options.cards} onChange={(card) => void update(e, { card })} />
@@ -460,9 +467,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
                 <td />
                 <td className="h-11 px-3 text-[13px] text-ink-2">{filtered ? tn(shown.length, "{n} entry shown", "{n} entries shown") : tn(shown.length, "{n} entry", "{n} entries")}</td>
                 <td />
-                <td className="px-3 text-right text-[15px] font-semibold">
-                  <Money value={total} currency={currency} />
-                </td>
+                <td className="px-3 text-right text-[14px] font-semibold tabular-nums">{money(total, currency)}</td>
                 <td colSpan={2} />
               </tr>
             </tfoot>
@@ -511,7 +516,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
 
 /** The new row: fill it in and press Enter. It stays open for the next one; Escape closes it. */
 function Draft({ month, onAdded, onDone }: { month: string; onAdded: (e: Entry) => void; onDone: () => void }) {
-  const { options, user } = useApp()
+  const { options } = useApp()
   const [name, setName] = useState("")
   const [type, setType] = useState("")
   const [amount, setAmount] = useState("")
@@ -564,7 +569,7 @@ function Draft({ month, onAdded, onDone }: { month: string; onAdded: (e: Entry) 
         <OptionSelect kind="type" label={t("New entry's type")} value={type} options={options.types} onChange={setType} />
       </td>
       <td>
-        <input id="draft-amount" className="cell amount" placeholder={money(0, user.prefs.currency)} inputMode="decimal" aria-label={t("New entry's amount")} value={amount} onChange={(e) => setAmount(e.target.value)} onKeyDown={onKey} />
+        <input id="draft-amount" className="cell amount" placeholder="0.00" inputMode="decimal" aria-label={t("New entry's amount")} value={amount} onChange={(e) => setAmount(e.target.value)} onKeyDown={onKey} />
       </td>
       <td>
         <DateCell value={date} onChange={setDate} label={t("New entry's date")} />
