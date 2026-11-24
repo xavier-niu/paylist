@@ -126,6 +126,59 @@ var migrations = []string{
 		PRIMARY KEY (user_id, id)
 	);
 	CREATE INDEX agent_chats_recent ON agent_chats(user_id, updated_at);`,
+
+	// Ledgers: entries and their types and cards belong to a ledger, which
+	// its owner can share with editors and viewers. Each user's existing
+	// entries become their personal ledger, with the user's id and currency.
+	`CREATE TABLE ledgers (
+		id         INTEGER PRIMARY KEY,
+		owner_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name       TEXT NOT NULL,
+		currency   TEXT NOT NULL DEFAULT 'CNY',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+	CREATE TABLE ledger_members (
+		ledger_id  INTEGER NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		role       TEXT NOT NULL CHECK (role IN ('owner', 'editor', 'viewer')),
+		created_at TEXT NOT NULL,
+		PRIMARY KEY (ledger_id, user_id)
+	);
+	CREATE INDEX ledger_members_user ON ledger_members(user_id);
+	INSERT INTO ledgers (id, owner_id, name, currency, created_at, updated_at)
+		SELECT id, id, 'Personal', COALESCE(NULLIF(json_extract(prefs, '$.currency'), ''), 'CNY'), created_at, created_at FROM users;
+	INSERT INTO ledger_members (ledger_id, user_id, role, created_at) SELECT id, id, 'owner', created_at FROM users;
+
+	CREATE TABLE options_new (
+		id        INTEGER PRIMARY KEY,
+		ledger_id INTEGER NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+		kind      TEXT NOT NULL CHECK (kind IN ('type', 'card')),
+		name      TEXT NOT NULL COLLATE NOCASE,
+		color     TEXT NOT NULL DEFAULT 'gray',
+		position  INTEGER NOT NULL DEFAULT 0,
+		UNIQUE (ledger_id, kind, name)
+	);
+	INSERT INTO options_new (id, ledger_id, kind, name, color, position) SELECT id, user_id, kind, name, color, position FROM options;
+	DROP TABLE options;
+	ALTER TABLE options_new RENAME TO options;
+
+	CREATE TABLE entries_new (
+		id         INTEGER PRIMARY KEY,
+		ledger_id  INTEGER NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+		name       TEXT NOT NULL,
+		type       TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
+		amount     INTEGER NOT NULL,
+		date       TEXT NOT NULL,
+		card       TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+	INSERT INTO entries_new (id, ledger_id, name, type, amount, date, card, created_at, updated_at)
+		SELECT id, user_id, name, type, amount, date, card, created_at, updated_at FROM entries;
+	DROP TABLE entries;
+	ALTER TABLE entries_new RENAME TO entries;
+	CREATE INDEX entries_ledger_date ON entries(ledger_id, date);`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

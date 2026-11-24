@@ -47,7 +47,7 @@ type MonthTotal struct {
 
 // GetStats computes the statistics for month (YYYY-MM) with `months` months of
 // history (1–36). today decides how many days of the current month have passed.
-func (s *Store) GetStats(ctx context.Context, userID int64, month string, months int, today time.Time) (*Stats, error) {
+func (s *Store) GetStats(ctx context.Context, ledgerID int64, month string, months int, today time.Time) (*Stats, error) {
 	start, err := ParseMonth(month)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (s *Store) GetStats(ctx context.Context, userID int64, month string, months
 	byDay := map[string]DayTotal{}
 	var totalCents int64
 	rows, err := s.db.QueryContext(ctx, `SELECT date, SUM(amount), COUNT(*) FROM entries
-		WHERE user_id = ? AND date BETWEEN ? AND ? GROUP BY date`, userID, from, to)
+		WHERE ledger_id = ? AND date BETWEEN ? AND ? GROUP BY date`, ledgerID, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -100,9 +100,9 @@ func (s *Store) GetStats(ctx context.Context, userID int64, month string, months
 
 	group := func(col, kind string) ([]GroupTotal, error) {
 		rows, err := s.db.QueryContext(ctx, `SELECT e.`+col+`, COALESCE(o.color, 'gray'), SUM(e.amount), COUNT(*)
-			FROM entries e LEFT JOIN options o ON o.user_id = e.user_id AND o.kind = ? AND o.name = e.`+col+`
-			WHERE e.user_id = ? AND e.date BETWEEN ? AND ?
-			GROUP BY e.`+col+` ORDER BY SUM(e.amount) DESC, e.`+col, kind, userID, from, to)
+			FROM entries e LEFT JOIN options o ON o.ledger_id = e.ledger_id AND o.kind = ? AND o.name = e.`+col+`
+			WHERE e.ledger_id = ? AND e.date BETWEEN ? AND ?
+			GROUP BY e.`+col+` ORDER BY SUM(e.amount) DESC, e.`+col, kind, ledgerID, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -130,8 +130,8 @@ func (s *Store) GetStats(ctx context.Context, userID int64, month string, months
 	first := start.AddDate(0, -(months - 1), 0)
 	byMonth := map[string]MonthTotal{}
 	rows, err = s.db.QueryContext(ctx, `SELECT substr(date, 1, 7), SUM(amount), COUNT(*) FROM entries
-		WHERE user_id = ? AND date BETWEEN ? AND ? GROUP BY substr(date, 1, 7)`,
-		userID, start.AddDate(0, -months, 0).Format(dateLayout), to)
+		WHERE ledger_id = ? AND date BETWEEN ? AND ? GROUP BY substr(date, 1, 7)`,
+		ledgerID, start.AddDate(0, -months, 0).Format(dateLayout), to)
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +162,8 @@ func (s *Store) GetStats(ctx context.Context, userID int64, month string, months
 		prevDay := min(d, prevStart.AddDate(0, 1, -1).Day())
 		sum := func(from, to time.Time) (float64, error) {
 			var cents int64
-			err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount), 0) FROM entries WHERE user_id = ? AND date BETWEEN ? AND ?`,
-				userID, from.Format(dateLayout), to.Format(dateLayout)).Scan(&cents)
+			err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount), 0) FROM entries WHERE ledger_id = ? AND date BETWEEN ? AND ?`,
+				ledgerID, from.Format(dateLayout), to.Format(dateLayout)).Scan(&cents)
 			return fromCents(cents), err
 		}
 		if st.ToDate, err = sum(start, start.AddDate(0, 0, d-1)); err != nil {
@@ -178,14 +178,14 @@ func (s *Store) GetStats(ctx context.Context, userID int64, month string, months
 }
 
 // AllMonths lists every month up to upTo (YYYY-MM) that has entries, newest first.
-func (s *Store) AllMonths(ctx context.Context, userID int64, upTo string) ([]MonthTotal, error) {
+func (s *Store) AllMonths(ctx context.Context, ledgerID int64, upTo string) ([]MonthTotal, error) {
 	end, err := time.Parse(monthLayout, upTo)
 	if err != nil {
 		return nil, fmt.Errorf("the month %q must be written YYYY-MM", upTo)
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT substr(date, 1, 7) AS m, SUM(amount), COUNT(*) FROM entries
-		WHERE user_id = ? AND date < ? GROUP BY m ORDER BY m DESC`,
-		userID, end.AddDate(0, 1, 0).Format(dateLayout))
+		WHERE ledger_id = ? AND date < ? GROUP BY m ORDER BY m DESC`,
+		ledgerID, end.AddDate(0, 1, 0).Format(dateLayout))
 	if err != nil {
 		return nil, err
 	}

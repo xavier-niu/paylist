@@ -74,26 +74,26 @@ func cleanOptionName(name string) (string, error) {
 	return name, nil
 }
 
-func (s *Store) seedOptions(ctx context.Context, userID int64) error {
+func (s *Store) seedOptions(ctx context.Context, ledgerID int64) error {
 	for i, name := range defaultTypes {
 		color := colorFor(name)
 		if name == "Other" {
 			color = "gray"
 		}
-		if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO options (user_id, kind, name, color, position) VALUES (?, 'type', ?, ?, ?)`,
-			userID, name, color, i); err != nil {
+		if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO options (ledger_id, kind, name, color, position) VALUES (?, 'type', ?, ?, ?)`,
+			ledgerID, name, color, i); err != nil {
 			return err
 		}
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO options (user_id, kind, name, color, position) VALUES (?, 'card', 'Cash', 'green', 0)`, userID)
+	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO options (ledger_id, kind, name, color, position) VALUES (?, 'card', 'Cash', 'green', 0)`, ledgerID)
 	return err
 }
 
-func (s *Store) ListOptions(ctx context.Context, userID int64) (Options, error) {
+func (s *Store) ListOptions(ctx context.Context, ledgerID int64) (Options, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT o.id, o.kind, o.name, o.color,
-			(SELECT COUNT(*) FROM entries e WHERE e.user_id = o.user_id AND
+			(SELECT COUNT(*) FROM entries e WHERE e.ledger_id = o.ledger_id AND
 				CASE o.kind WHEN 'type' THEN e.type ELSE e.card END = o.name)
-		FROM options o WHERE o.user_id = ? ORDER BY o.kind, o.position, o.id`, userID)
+		FROM options o WHERE o.ledger_id = ? ORDER BY o.kind, o.position, o.id`, ledgerID)
 	if err != nil {
 		return Options{}, err
 	}
@@ -113,9 +113,9 @@ func (s *Store) ListOptions(ctx context.Context, userID int64) (Options, error) 
 	return out, rows.Err()
 }
 
-func (s *Store) getOption(ctx context.Context, q querier, userID, id int64) (*Option, error) {
+func (s *Store) getOption(ctx context.Context, q querier, ledgerID, id int64) (*Option, error) {
 	var o Option
-	err := q.QueryRowContext(ctx, `SELECT id, kind, name, color FROM options WHERE user_id = ? AND id = ?`, userID, id).
+	err := q.QueryRowContext(ctx, `SELECT id, kind, name, color FROM options WHERE ledger_id = ? AND id = ?`, ledgerID, id).
 		Scan(&o.ID, &o.Kind, &o.Name, &o.Color)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -124,10 +124,10 @@ func (s *Store) getOption(ctx context.Context, q querier, userID, id int64) (*Op
 }
 
 // FindOption returns the option of this kind with this name (any case).
-func (s *Store) FindOption(ctx context.Context, userID int64, kind, name string) (*Option, error) {
+func (s *Store) FindOption(ctx context.Context, ledgerID int64, kind, name string) (*Option, error) {
 	var o Option
-	err := s.db.QueryRowContext(ctx, `SELECT id, kind, name, color FROM options WHERE user_id = ? AND kind = ? AND name = ?`,
-		userID, kind, strings.TrimSpace(name)).Scan(&o.ID, &o.Kind, &o.Name, &o.Color)
+	err := s.db.QueryRowContext(ctx, `SELECT id, kind, name, color FROM options WHERE ledger_id = ? AND kind = ? AND name = ?`,
+		ledgerID, kind, strings.TrimSpace(name)).Scan(&o.ID, &o.Kind, &o.Name, &o.Color)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -136,7 +136,7 @@ func (s *Store) FindOption(ctx context.Context, userID int64, kind, name string)
 
 // CreateOption adds a choice. color "" picks one. An existing option with the
 // same name (any case) is returned as it is.
-func (s *Store) CreateOption(ctx context.Context, userID int64, kind, name, color string) (*Option, error) {
+func (s *Store) CreateOption(ctx context.Context, ledgerID int64, kind, name, color string) (*Option, error) {
 	if err := validKind(kind); err != nil {
 		return nil, err
 	}
@@ -145,14 +145,14 @@ func (s *Store) CreateOption(ctx context.Context, userID int64, kind, name, colo
 		return nil, err
 	}
 	defer tx.Rollback()
-	name, err = s.ensureOption(ctx, tx, userID, kind, name, color)
+	name, err = s.ensureOption(ctx, tx, ledgerID, kind, name, color)
 	if err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return s.FindOption(ctx, userID, kind, name)
+	return s.FindOption(ctx, ledgerID, kind, name)
 }
 
 type querier interface {
@@ -162,7 +162,7 @@ type querier interface {
 
 // ensureOption returns the stored name of the option called name, creating it
 // if needed. An empty name stays empty (no option).
-func (s *Store) ensureOption(ctx context.Context, q querier, userID int64, kind, name, color string) (string, error) {
+func (s *Store) ensureOption(ctx context.Context, q querier, ledgerID int64, kind, name, color string) (string, error) {
 	if strings.TrimSpace(name) == "" {
 		return "", nil
 	}
@@ -171,7 +171,7 @@ func (s *Store) ensureOption(ctx context.Context, q querier, userID int64, kind,
 		return "", err
 	}
 	var stored string
-	err = q.QueryRowContext(ctx, `SELECT name FROM options WHERE user_id = ? AND kind = ? AND name = ?`, userID, kind, name).Scan(&stored)
+	err = q.QueryRowContext(ctx, `SELECT name FROM options WHERE ledger_id = ? AND kind = ? AND name = ?`, ledgerID, kind, name).Scan(&stored)
 	if err == nil {
 		return stored, nil
 	}
@@ -179,8 +179,8 @@ func (s *Store) ensureOption(ctx context.Context, q querier, userID int64, kind,
 		return "", err
 	}
 	var n, pos int
-	if err := q.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(MAX(position), -1) + 1 FROM options WHERE user_id = ? AND kind = ?`,
-		userID, kind).Scan(&n, &pos); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(MAX(position), -1) + 1 FROM options WHERE ledger_id = ? AND kind = ?`,
+		ledgerID, kind).Scan(&n, &pos); err != nil {
 		return "", err
 	}
 	if n >= maxOptions {
@@ -189,21 +189,21 @@ func (s *Store) ensureOption(ctx context.Context, q querier, userID int64, kind,
 	if color == "" || !validColor(color) {
 		color = colorFor(name)
 	}
-	if _, err := q.ExecContext(ctx, `INSERT INTO options (user_id, kind, name, color, position) VALUES (?, ?, ?, ?, ?)`,
-		userID, kind, name, color, pos); err != nil {
+	if _, err := q.ExecContext(ctx, `INSERT INTO options (ledger_id, kind, name, color, position) VALUES (?, ?, ?, ?, ?)`,
+		ledgerID, kind, name, color, pos); err != nil {
 		return "", err
 	}
 	return name, nil
 }
 
 // UpdateOption renames an option (on every entry that has it, too) or recolors it.
-func (s *Store) UpdateOption(ctx context.Context, userID, id int64, name, color *string) (*Option, error) {
+func (s *Store) UpdateOption(ctx context.Context, ledgerID, id int64, name, color *string) (*Option, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	o, err := s.getOption(ctx, tx, userID, id)
+	o, err := s.getOption(ctx, tx, ledgerID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -221,8 +221,8 @@ func (s *Store) UpdateOption(ctx context.Context, userID, id int64, name, color 
 			return nil, err
 		}
 		var clash int64
-		err = tx.QueryRowContext(ctx, `SELECT id FROM options WHERE user_id = ? AND kind = ? AND name = ? AND id != ?`,
-			userID, o.Kind, newName, id).Scan(&clash)
+		err = tx.QueryRowContext(ctx, `SELECT id FROM options WHERE ledger_id = ? AND kind = ? AND name = ? AND id != ?`,
+			ledgerID, o.Kind, newName, id).Scan(&clash)
 		if err == nil {
 			return nil, fmt.Errorf("there is already a %s called %q", o.Kind, newName)
 		}
@@ -233,31 +233,31 @@ func (s *Store) UpdateOption(ctx context.Context, userID, id int64, name, color 
 			return nil, err
 		}
 		col := o.Kind // "type" or "card": both are entries columns
-		if _, err := tx.ExecContext(ctx, `UPDATE entries SET `+col+` = ?, updated_at = ? WHERE user_id = ? AND `+col+` = ?`,
-			newName, now(), userID, o.Name); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE entries SET `+col+` = ?, updated_at = ? WHERE ledger_id = ? AND `+col+` = ?`,
+			newName, now(), ledgerID, o.Name); err != nil {
 			return nil, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return s.getOption(ctx, s.db, userID, id)
+	return s.getOption(ctx, s.db, ledgerID, id)
 }
 
 // DeleteOption removes an option and clears it from the entries that had it.
 // It returns how many entries were cleared.
-func (s *Store) DeleteOption(ctx context.Context, userID, id int64) (*Option, int64, error) {
+func (s *Store) DeleteOption(ctx context.Context, ledgerID, id int64) (*Option, int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer tx.Rollback()
-	o, err := s.getOption(ctx, tx, userID, id)
+	o, err := s.getOption(ctx, tx, ledgerID, id)
 	if err != nil {
 		return nil, 0, err
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE entries SET `+o.Kind+` = '', updated_at = ? WHERE user_id = ? AND `+o.Kind+` = ?`,
-		now(), userID, o.Name)
+	res, err := tx.ExecContext(ctx, `UPDATE entries SET `+o.Kind+` = '', updated_at = ? WHERE ledger_id = ? AND `+o.Kind+` = ?`,
+		now(), ledgerID, o.Name)
 	if err != nil {
 		return nil, 0, err
 	}

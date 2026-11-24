@@ -3,6 +3,8 @@ package store
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -28,6 +30,16 @@ func newStore(t *testing.T) (*Store, *User) {
 
 func ptr[T any](v T) *T { return &v }
 
+// personal is the id of the user's own ledger, which every account starts with.
+func personal(t *testing.T, st *Store, u *User) int64 {
+	t.Helper()
+	ls, err := st.ListLedgers(context.Background(), u.ID)
+	if err != nil || len(ls) != 1 || ls[0].Role != RoleOwner {
+		t.Fatalf("ledgers: %+v %v", ls, err)
+	}
+	return ls[0].ID
+}
+
 func entry(name, typ string, amount float64, date, card string) EntryInput {
 	return EntryInput{Name: &name, Type: &typ, Amount: &amount, Date: &date, Card: &card}
 }
@@ -35,13 +47,14 @@ func entry(name, typ string, amount float64, date, card string) EntryInput {
 func TestEntriesAndOptions(t *testing.T) {
 	ctx := context.Background()
 	st, u := newStore(t)
+	L := personal(t, st, u)
 
-	opts, err := st.ListOptions(ctx, u.ID)
+	opts, err := st.ListOptions(ctx, L)
 	if err != nil || len(opts.Types) != len(defaultTypes) || len(opts.Cards) != 1 {
 		t.Fatalf("seeded options: %+v %v", opts, err)
 	}
 
-	added, err := st.CreateEntries(ctx, u.ID, []EntryInput{
+	added, err := st.CreateEntries(ctx, L, []EntryInput{
 		entry("Lunch", "food", 12.345, "2026-11-03", "Visa"), // "food" matches Food; Visa is new
 		entry("Rent", "Housing", 4500, "2026-11-01", ""),
 		entry("Taxi", "", 30, "2026-10-31", "Cash"),
@@ -52,42 +65,42 @@ func TestEntriesAndOptions(t *testing.T) {
 	if added[0].Type != "Food" || added[0].Amount != 12.35 || added[0].Card != "Visa" {
 		t.Errorf("first entry: %+v", added[0])
 	}
-	if _, err := st.FindOption(ctx, u.ID, KindCard, "visa"); err != nil {
+	if _, err := st.FindOption(ctx, L, KindCard, "visa"); err != nil {
 		t.Errorf("Visa wasn't made an option: %v", err)
 	}
 
 	// All or nothing.
-	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{entry("ok", "", 1, "2026-11-02", ""), entry("bad", "", 1, "2026-13-02", "")}); err == nil {
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{entry("ok", "", 1, "2026-11-02", ""), entry("bad", "", 1, "2026-13-02", "")}); err == nil {
 		t.Error("a bad date was accepted")
 	}
 
 	from, to, _ := MonthRange("2026-11")
-	nov, err := st.ListEntries(ctx, u.ID, EntryFilter{From: from, To: to})
+	nov, err := st.ListEntries(ctx, L, EntryFilter{From: from, To: to})
 	if err != nil || len(nov) != 2 || nov[0].Name != "Rent" {
 		t.Fatalf("November: %+v %v", nov, err)
 	}
 
-	e, err := st.UpdateEntry(ctx, u.ID, added[0].ID, EntryInput{Amount: ptr(15.0), Type: ptr("")})
+	e, err := st.UpdateEntry(ctx, L, added[0].ID, EntryInput{Amount: ptr(15.0), Type: ptr("")})
 	if err != nil || e.Amount != 15 || e.Type != "" || e.Name != "Lunch" {
 		t.Fatalf("update: %+v %v", e, err)
 	}
 
 	// Renaming an option renames it on its entries; deleting clears it.
-	visa, _ := st.FindOption(ctx, u.ID, KindCard, "Visa")
-	if _, err := st.UpdateOption(ctx, u.ID, visa.ID, ptr("Visa 4242"), nil); err != nil {
+	visa, _ := st.FindOption(ctx, L, KindCard, "Visa")
+	if _, err := st.UpdateOption(ctx, L, visa.ID, ptr("Visa 4242"), nil); err != nil {
 		t.Fatal(err)
 	}
-	if e, _ := st.GetEntry(ctx, u.ID, added[0].ID); e.Card != "Visa 4242" {
+	if e, _ := st.GetEntry(ctx, L, added[0].ID); e.Card != "Visa 4242" {
 		t.Errorf("card after rename: %q", e.Card)
 	}
-	cash, _ := st.FindOption(ctx, u.ID, KindCard, "Cash")
-	if _, err := st.UpdateOption(ctx, u.ID, cash.ID, ptr("visa 4242"), nil); err == nil {
+	cash, _ := st.FindOption(ctx, L, KindCard, "Cash")
+	if _, err := st.UpdateOption(ctx, L, cash.ID, ptr("visa 4242"), nil); err == nil {
 		t.Error("renamed onto an existing option")
 	}
-	if _, n, err := st.DeleteOption(ctx, u.ID, cash.ID); err != nil || n != 1 {
+	if _, n, err := st.DeleteOption(ctx, L, cash.ID); err != nil || n != 1 {
 		t.Errorf("delete Cash: cleared %d, %v", n, err)
 	}
-	if e, _ := st.GetEntry(ctx, u.ID, added[2].ID); e.Card != "" {
+	if e, _ := st.GetEntry(ctx, L, added[2].ID); e.Card != "" {
 		t.Errorf("card after delete: %q", e.Card)
 	}
 
@@ -99,7 +112,7 @@ func TestEntriesAndOptions(t *testing.T) {
 	if n, _ := st.DeleteEntries(ctx, other.ID, []int64{added[1].ID}); n != 0 {
 		t.Error("other user deleted an entry")
 	}
-	if n, _ := st.DeleteEntries(ctx, u.ID, []int64{added[1].ID, added[2].ID}); n != 2 {
+	if n, _ := st.DeleteEntries(ctx, L, []int64{added[1].ID, added[2].ID}); n != 2 {
 		t.Errorf("deleted %d", n)
 	}
 }
@@ -107,7 +120,8 @@ func TestEntriesAndOptions(t *testing.T) {
 func TestStats(t *testing.T) {
 	ctx := context.Background()
 	st, u := newStore(t)
-	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{
+	L := personal(t, st, u)
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{
 		entry("Lunch", "Food", 10.10, "2026-11-01", "Cash"),
 		entry("Dinner", "Food", 20.20, "2026-11-01", "Visa"),
 		entry("Bus", "Transport", 3, "2026-11-05", "Cash"),
@@ -116,7 +130,7 @@ func TestStats(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	s, err := st.GetStats(ctx, u.ID, "2026-11", 12, time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
+	s, err := st.GetStats(ctx, L, "2026-11", 12, time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +149,7 @@ func TestStats(t *testing.T) {
 	if len(s.Monthly) != 12 || s.Monthly[11].Month != "2026-11" || s.Monthly[10].Total != 100 || s.Monthly[1].Total != 7 || s.Monthly[0].Month != "2025-12" {
 		t.Errorf("monthly: %+v", s.Monthly)
 	}
-	past, _ := st.GetStats(ctx, u.ID, "2026-10", 3, time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC))
+	past, _ := st.GetStats(ctx, L, "2026-10", 3, time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC))
 	if past.DailyAvg != 3.23 { // 100 / 31 days
 		t.Errorf("October's daily average: %v", past.DailyAvg)
 	}
@@ -145,7 +159,8 @@ func TestStats(t *testing.T) {
 func TestStatsMonthToDate(t *testing.T) {
 	ctx := context.Background()
 	st, u := newStore(t)
-	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{
+	L := personal(t, st, u)
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{
 		entry("Early", "", 100, "2026-10-05", ""),
 		entry("Late", "", 900, "2026-10-28", ""),
 		entry("Now", "", 50, "2026-11-03", ""),
@@ -153,7 +168,7 @@ func TestStatsMonthToDate(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	s, err := st.GetStats(ctx, u.ID, "2026-11", 2, time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC))
+	s, err := st.GetStats(ctx, L, "2026-11", 2, time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,15 +176,15 @@ func TestStatsMonthToDate(t *testing.T) {
 		t.Errorf("month to date: %+v", s)
 	}
 	// A past month compares whole months.
-	past, _ := st.GetStats(ctx, u.ID, "2026-11", 2, time.Date(2026, 12, 5, 0, 0, 0, 0, time.UTC))
+	past, _ := st.GetStats(ctx, L, "2026-11", 2, time.Date(2026, 12, 5, 0, 0, 0, 0, time.UTC))
 	if past.CompareDay != 0 || past.ToDate != 70 || past.PrevToDate != 1000 {
 		t.Errorf("whole months: %+v", past)
 	}
 	// March 31 against February: up to February's last day.
-	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{entry("Feb", "", 30, "2027-02-28", "")}); err != nil {
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{entry("Feb", "", 30, "2027-02-28", "")}); err != nil {
 		t.Fatal(err)
 	}
-	mar, _ := st.GetStats(ctx, u.ID, "2027-03", 2, time.Date(2027, 3, 30, 0, 0, 0, 0, time.UTC))
+	mar, _ := st.GetStats(ctx, L, "2027-03", 2, time.Date(2027, 3, 30, 0, 0, 0, 0, time.UTC))
 	if mar.PrevToDate != 30 || mar.CompareDay != 30 {
 		t.Errorf("short month before: %+v", mar)
 	}
@@ -178,7 +193,8 @@ func TestStatsMonthToDate(t *testing.T) {
 func TestAllMonths(t *testing.T) {
 	ctx := context.Background()
 	st, u := newStore(t)
-	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{
+	L := personal(t, st, u)
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{
 		entry("Old", "", 10, "2024-03-02", ""),
 		entry("A", "", 1, "2026-10-05", ""),
 		entry("B", "", 2, "2026-10-28", ""),
@@ -187,7 +203,7 @@ func TestAllMonths(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.AllMonths(ctx, u.ID, "2026-11")
+	got, err := st.AllMonths(ctx, L, "2026-11")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +216,7 @@ func TestAllMonths(t *testing.T) {
 			t.Errorf("month %d: got %+v, want %+v", i, got[i], want[i])
 		}
 	}
-	if _, err := st.AllMonths(ctx, u.ID, "nope"); err == nil {
+	if _, err := st.AllMonths(ctx, L, "nope"); err == nil {
 		t.Error("a bad month was accepted")
 	}
 }
@@ -208,7 +224,8 @@ func TestAllMonths(t *testing.T) {
 func TestSuggestEntries(t *testing.T) {
 	ctx := context.Background()
 	st, u := newStore(t)
-	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{
+	L := personal(t, st, u)
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{
 		entry("Iced coffee", "Food", 25, "2026-11-20", "Alipay"),
 		entry("Coffee", "Food", 18, "2026-11-01", "Cash"),
 		entry("coffee", "Food", 19.5, "2026-11-10", "Credit card"),
@@ -217,7 +234,7 @@ func TestSuggestEntries(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.SuggestEntries(ctx, u.ID, "COF", 5)
+	got, err := st.SuggestEntries(ctx, L, "COF", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +243,7 @@ func TestSuggestEntries(t *testing.T) {
 		t.Errorf("suggestions: %+v", got)
 	}
 	// No text: every name, most used first.
-	if all, _ := st.SuggestEntries(ctx, u.ID, "  ", 100); len(all) != 3 || all[0].Name != "coffee" {
+	if all, _ := st.SuggestEntries(ctx, L, "  ", 100); len(all) != 3 || all[0].Name != "coffee" {
 		t.Errorf("blank text: %+v", all)
 	}
 }
@@ -234,8 +251,9 @@ func TestSuggestEntries(t *testing.T) {
 func TestRefund(t *testing.T) {
 	ctx := context.Background()
 	st, u := newStore(t)
+	L := personal(t, st, u)
 	today := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
-	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{
 		entry("Coffee", "Food", 18, "2026-11-20", "Cash"),
 		entry("Coffee", "Food", 19.77, "2026-11-02", "Cash"),
 		entry("Iced coffee", "Food", 19.77, "2026-11-03", "Cash"),
@@ -248,38 +266,168 @@ func TestRefund(t *testing.T) {
 	f := func(v float64) *float64 { return &v }
 
 	// The same name (ignoring case) and amount: deleted. "Iced coffee" isn't "coffee".
-	r, err := st.Refund(ctx, u.ID, RefundInput{Name: " coffee ", Amount: f(19.77)}, today)
+	r, err := st.Refund(ctx, L, RefundInput{Name: " coffee ", Amount: f(19.77)}, today)
 	if err != nil || r.Refunded == nil || r.Refunded.Name != "Coffee" || r.Refunded.Date != "2026-11-02" || r.Added != nil {
 		t.Fatalf("one match: %+v %v", r, err)
 	}
 	// The sign of the amount doesn't matter.
-	if r, err := st.Refund(ctx, u.ID, RefundInput{Name: "Headphones", Amount: f(-299)}, today); err != nil || r.Refunded == nil {
+	if r, err := st.Refund(ctx, L, RefundInput{Name: "Headphones", Amount: f(-299)}, today); err != nil || r.Refunded == nil {
 		t.Fatalf("negative amount: %+v %v", r, err)
 	}
 	// Several matches: nothing changes, they come back newest first; then one by id.
-	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{entry("Coffee", "Food", 18, "2026-11-22", "")}); err != nil {
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{entry("Coffee", "Food", 18, "2026-11-22", "")}); err != nil {
 		t.Fatal(err)
 	}
-	r, err = st.Refund(ctx, u.ID, RefundInput{Name: "Coffee", Amount: f(18)}, today)
+	r, err = st.Refund(ctx, L, RefundInput{Name: "Coffee", Amount: f(18)}, today)
 	if err != nil || len(r.Matches) != 2 || r.Matches[0].Date != "2026-11-22" || r.Refunded != nil {
 		t.Fatalf("several: %+v %v", r, err)
 	}
-	if r, err := st.Refund(ctx, u.ID, RefundInput{ID: r.Matches[1].ID}, today); err != nil || r.Refunded == nil || r.Refunded.Date != "2026-11-20" {
+	if r, err := st.Refund(ctx, L, RefundInput{ID: r.Matches[1].ID}, today); err != nil || r.Refunded == nil || r.Refunded.Date != "2026-11-20" {
 		t.Fatalf("by id: %+v %v", r, err)
 	}
 	// No match: added as a negative amount, with its own type, card and date.
-	r, err = st.Refund(ctx, u.ID, RefundInput{Name: "Old coat", Amount: f(500), Type: "Shopping", Card: "Cash", Date: "2026-11-23"}, today)
+	r, err = st.Refund(ctx, L, RefundInput{Name: "Old coat", Amount: f(500), Type: "Shopping", Card: "Cash", Date: "2026-11-23"}, today)
 	if err != nil || r.Added == nil || r.Added.Amount != -500 || r.Added.Date != "2026-11-23" || r.Added.Type != "Shopping" || r.Added.Card != "Cash" {
 		t.Fatalf("no match: %+v %v", r, err)
 	}
 	// Both the name and the amount are needed.
 	for _, in := range []RefundInput{{Name: "Coffee"}, {Amount: f(18)}, {}} {
-		if _, err := st.Refund(ctx, u.ID, in, today); err == nil {
+		if _, err := st.Refund(ctx, L, in, today); err == nil {
 			t.Errorf("accepted %+v", in)
 		}
 	}
 	// A refund entry can't be refunded.
-	if _, err := st.Refund(ctx, u.ID, RefundInput{ID: r.Added.ID}, today); err == nil {
+	if _, err := st.Refund(ctx, L, RefundInput{ID: r.Added.ID}, today); err == nil {
 		t.Error("a refund was refunded")
+	}
+}
+
+func TestLedgers(t *testing.T) {
+	ctx := context.Background()
+	st, a := newStore(t)
+	mine := personal(t, st, a)
+	b, err := st.CreateUser(ctx, "b@example.com", "Bea", "password1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	theirs := personal(t, st, b)
+
+	// A new ledger has its own types, cards and currency.
+	home, err := st.CreateLedger(ctx, a.ID, " Home ", "usd")
+	if err != nil || home.Name != "Home" || home.Currency != "USD" || home.Role != RoleOwner || home.Members != 1 {
+		t.Fatalf("create: %+v %v", home, err)
+	}
+	if opts, _ := st.ListOptions(ctx, home.ID); len(opts.Types) == 0 || len(opts.Cards) != 1 {
+		t.Errorf("seeded options: %+v", opts)
+	}
+	if _, err := st.CreateLedger(ctx, a.ID, "  ", "USD"); err == nil {
+		t.Error("a nameless ledger was made")
+	}
+	if _, err := st.CreateLedger(ctx, a.ID, "X", "dollars"); err == nil {
+		t.Error("a bad currency was taken")
+	}
+
+	// Sharing: only by an account's email; once; editor or viewer.
+	if _, err := st.AddLedgerMember(ctx, home.ID, "nobody@example.com", RoleEditor); err == nil {
+		t.Error("shared with nobody")
+	}
+	if _, err := st.AddLedgerMember(ctx, home.ID, "B@example.com", "boss"); err == nil {
+		t.Error("an unknown role was taken")
+	}
+	m, err := st.AddLedgerMember(ctx, home.ID, "B@example.com", RoleViewer)
+	if err != nil || m.UserID != b.ID || m.Role != RoleViewer {
+		t.Fatalf("add: %+v %v", m, err)
+	}
+	if _, err := st.AddLedgerMember(ctx, home.ID, "b@example.com", RoleEditor); !errors.Is(err, ErrAlreadyIn) {
+		t.Errorf("added twice: %v", err)
+	}
+	bs, _ := st.ListLedgers(ctx, b.ID)
+	if len(bs) != 2 || bs[0].ID != theirs || bs[1].ID != home.ID || bs[1].Role != RoleViewer || bs[1].CanWrite() || bs[1].Owner != "a@example.com" || bs[1].Members != 2 {
+		t.Errorf("b's ledgers: %+v", bs)
+	}
+	if err := st.SetLedgerMemberRole(ctx, home.ID, b.ID, RoleEditor); err != nil {
+		t.Error(err)
+	}
+	if l, _ := st.GetLedger(ctx, b.ID, home.ID); !l.CanWrite() {
+		t.Errorf("editor: %+v", l)
+	}
+	// The owner stays the owner.
+	if err := st.SetLedgerMemberRole(ctx, home.ID, a.ID, RoleViewer); !errors.Is(err, ErrOwnerRole) {
+		t.Errorf("owner's role: %v", err)
+	}
+	if err := st.RemoveLedgerMember(ctx, home.ID, a.ID); !errors.Is(err, ErrOwnerRole) {
+		t.Errorf("removing the owner: %v", err)
+	}
+	// Others can't see a ledger they don't have.
+	if _, err := st.GetLedger(ctx, b.ID, mine); !errors.Is(err, ErrNotMember) {
+		t.Errorf("someone else's ledger: %v", err)
+	}
+	if ms, _ := st.ListLedgerMembers(ctx, home.ID); len(ms) != 2 || ms[0].Role != RoleOwner || ms[1].Name != "Bea" {
+		t.Errorf("members: %+v", ms)
+	}
+	if err := st.RemoveLedgerMember(ctx, home.ID, b.ID); err != nil {
+		t.Error(err)
+	}
+	if _, err := st.GetLedger(ctx, b.ID, home.ID); !errors.Is(err, ErrNotMember) {
+		t.Errorf("after leaving: %v", err)
+	}
+
+	// Renaming, and deleting, but never one's last ledger.
+	name, cur := "House", "eur"
+	if err := st.UpdateLedger(ctx, home.ID, &name, &cur); err != nil {
+		t.Error(err)
+	}
+	if l, _ := st.GetLedger(ctx, a.ID, home.ID); l.Name != "House" || l.Currency != "EUR" {
+		t.Errorf("updated: %+v", l)
+	}
+	if _, err := st.CreateEntries(ctx, home.ID, []EntryInput{entry("Sofa", "", 900, "2026-11-01", "")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteLedger(ctx, a.ID, home.ID); err != nil {
+		t.Fatal(err)
+	}
+	if es, _ := st.ListEntries(ctx, home.ID, EntryFilter{}); len(es) != 0 {
+		t.Errorf("the deleted ledger's entries: %+v", es)
+	}
+	if err := st.DeleteLedger(ctx, a.ID, mine); !errors.Is(err, ErrLastLedger) {
+		t.Errorf("deleting the last ledger: %v", err)
+	}
+}
+
+// An older database, from before ledgers, keeps everyone's entries and options in their personal ledger.
+func TestLedgersMigration(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "old.db")
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		migrations[0],
+		`INSERT INTO users (id, email, password_hash, prefs, created_at, updated_at) VALUES (7, 'old@example.com', 'x', '{"currency":"USD"}', '2026-01-01', '2026-01-01')`,
+		`INSERT INTO options (user_id, kind, name, color) VALUES (7, 'type', 'Food', 'orange')`,
+		`INSERT INTO entries (user_id, name, type, amount, date, card, created_at, updated_at) VALUES (7, 'Lunch', 'Food', 3500, '2026-01-02', '', '2026-01-02', '2026-01-02')`,
+		`PRAGMA user_version = 1`,
+	} {
+		if _, err := db.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+
+	st, err := Open(path, bytes.Repeat([]byte{1}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ls, err := st.ListLedgers(ctx, 7)
+	if err != nil || len(ls) != 1 || ls[0].ID != 7 || ls[0].Name != "Personal" || ls[0].Currency != "USD" || ls[0].Role != RoleOwner {
+		t.Fatalf("ledgers: %+v %v", ls, err)
+	}
+	if es, _ := st.ListEntries(ctx, 7, EntryFilter{}); len(es) != 1 || es[0].Name != "Lunch" || es[0].Amount != 35 {
+		t.Errorf("entries: %+v", es)
+	}
+	if opts, _ := st.ListOptions(ctx, 7); len(opts.Types) != 1 || opts.Types[0].Uses != 1 {
+		t.Errorf("options: %+v", opts)
 	}
 }

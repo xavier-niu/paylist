@@ -18,7 +18,13 @@ func seedDemo(ctx context.Context, st *store.Store, email string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("no account for %s to fill with demo data", email)
 	}
-	if n, err := st.CountEntries(ctx, u.ID); err != nil || n > 0 {
+	// The demo data goes into the account's own first ledger.
+	ls, err := st.ListLedgers(ctx, u.ID)
+	if err != nil || len(ls) == 0 {
+		return 0, err
+	}
+	ledger := ls[0].ID
+	if n, err := st.CountEntries(ctx, ledger); err != nil || n > 0 {
 		return 0, err
 	}
 	type item struct {
@@ -67,6 +73,6 @@ func seedDemo(ctx context.Context, st *store.Store, email string) (int, error) {
 			}
 		}
 	}
-	out, err := st.CreateEntries(ctx, u.ID, ins)
+	out, err := st.CreateEntries(ctx, ledger, ins)
 	return len(out), err
 }

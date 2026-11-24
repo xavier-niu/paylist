@@ -37,6 +37,8 @@ type Prefs struct {
 	Language string `json:"language"` // "system" (follow the browser), "en" or "zh"
 	// LedgerOrder is how the ledger sorts a month: date-asc, date-desc, amount-desc, amount-asc or name.
 	LedgerOrder string `json:"ledger_order"`
+	// LedgerID is the ledger the user had open last (0 for their first).
+	LedgerID int64 `json:"ledger_id,omitempty"`
 }
 
 func (p Prefs) withDefaults() Prefs {
@@ -133,7 +135,8 @@ func (s *Store) createUser(ctx context.Context, email, name, password string, ad
 		return nil, ErrSetupDone
 	}
 	id, _ := res.LastInsertId()
-	if err := s.seedOptions(ctx, id); err != nil {
+	// Everyone starts with a ledger of their own.
+	if _, err := s.CreateLedger(ctx, id, "Personal", "CNY"); err != nil {
 		return nil, err
 	}
 	return s.GetUser(ctx, id)

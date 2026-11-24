@@ -103,8 +103,8 @@ func scanEntry(row interface{ Scan(...any) error }) (*Entry, error) {
 	return &e, nil
 }
 
-func (s *Store) GetEntry(ctx context.Context, userID, id int64) (*Entry, error) {
-	return scanEntry(s.db.QueryRowContext(ctx, `SELECT `+entryCols+` FROM entries WHERE user_id = ? AND id = ?`, userID, id))
+func (s *Store) GetEntry(ctx context.Context, ledgerID, id int64) (*Entry, error) {
+	return scanEntry(s.db.QueryRowContext(ctx, `SELECT `+entryCols+` FROM entries WHERE ledger_id = ? AND id = ?`, ledgerID, id))
 }
 
 // EntryFilter selects entries. Dates are inclusive YYYY-MM-DD; empty fields don't filter.
@@ -115,9 +115,9 @@ type EntryFilter struct {
 	Limit      int    // 0: no limit
 }
 
-func (s *Store) ListEntries(ctx context.Context, userID int64, f EntryFilter) ([]Entry, error) {
-	q := `SELECT ` + entryCols + ` FROM entries WHERE user_id = ?`
-	args := []any{userID}
+func (s *Store) ListEntries(ctx context.Context, ledgerID int64, f EntryFilter) ([]Entry, error) {
+	q := `SELECT ` + entryCols + ` FROM entries WHERE ledger_id = ?`
+	args := []any{ledgerID}
 	if f.From != "" {
 		q += ` AND date >= ?`
 		args = append(args, f.From)
@@ -160,7 +160,7 @@ func (s *Store) ListEntries(ctx context.Context, userID int64, f EntryFilter) ([
 
 // CreateEntries adds entries in one transaction: all or none. A type or card
 // that isn't an option yet becomes one.
-func (s *Store) CreateEntries(ctx context.Context, userID int64, ins []EntryInput) ([]Entry, error) {
+func (s *Store) CreateEntries(ctx context.Context, ledgerID int64, ins []EntryInput) ([]Entry, error) {
 	if len(ins) == 0 {
 		return nil, errors.New("no entries to add")
 	}
@@ -174,7 +174,7 @@ func (s *Store) CreateEntries(ctx context.Context, userID int64, ins []EntryInpu
 	defer tx.Rollback()
 	ids := make([]int64, 0, len(ins))
 	for i, in := range ins {
-		id, err := s.insertEntry(ctx, tx, userID, in)
+		id, err := s.insertEntry(ctx, tx, ledgerID, in)
 		if err != nil {
 			if len(ins) > 1 {
 				return nil, fmt.Errorf("entry %d: %w", i+1, err)
@@ -188,7 +188,7 @@ func (s *Store) CreateEntries(ctx context.Context, userID int64, ins []EntryInpu
 	}
 	out := make([]Entry, 0, len(ids))
 	for _, id := range ids {
-		e, err := s.GetEntry(ctx, userID, id)
+		e, err := s.GetEntry(ctx, ledgerID, id)
 		if err != nil {
 			return nil, err
 		}
@@ -197,7 +197,7 @@ func (s *Store) CreateEntries(ctx context.Context, userID int64, ins []EntryInpu
 	return out, nil
 }
 
-func (s *Store) insertEntry(ctx context.Context, tx *sql.Tx, userID int64, in EntryInput) (int64, error) {
+func (s *Store) insertEntry(ctx context.Context, tx *sql.Tx, ledgerID int64, in EntryInput) (int64, error) {
 	if in.Name == nil || in.Amount == nil || in.Date == nil {
 		return 0, errors.New("an entry needs a name, an amount and a date")
 	}
@@ -215,18 +215,18 @@ func (s *Store) insertEntry(ctx context.Context, tx *sql.Tx, userID int64, in En
 	}
 	var typ, card string
 	if in.Type != nil {
-		if typ, err = s.ensureOption(ctx, tx, userID, KindType, *in.Type, ""); err != nil {
+		if typ, err = s.ensureOption(ctx, tx, ledgerID, KindType, *in.Type, ""); err != nil {
 			return 0, err
 		}
 	}
 	if in.Card != nil {
-		if card, err = s.ensureOption(ctx, tx, userID, KindCard, *in.Card, ""); err != nil {
+		if card, err = s.ensureOption(ctx, tx, ledgerID, KindCard, *in.Card, ""); err != nil {
 			return 0, err
 		}
 	}
 	ts := now()
-	res, err := tx.ExecContext(ctx, `INSERT INTO entries (user_id, name, type, amount, date, card, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, userID, name, typ, cents, d.Format(dateLayout), card, ts, ts)
+	res, err := tx.ExecContext(ctx, `INSERT INTO entries (ledger_id, name, type, amount, date, card, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, ledgerID, name, typ, cents, d.Format(dateLayout), card, ts, ts)
 	if err != nil {
 		return 0, err
 	}
@@ -234,13 +234,13 @@ func (s *Store) insertEntry(ctx context.Context, tx *sql.Tx, userID int64, in En
 }
 
 // UpdateEntry changes the given fields of an entry.
-func (s *Store) UpdateEntry(ctx context.Context, userID, id int64, in EntryInput) (*Entry, error) {
+func (s *Store) UpdateEntry(ctx context.Context, ledgerID, id int64, in EntryInput) (*Entry, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	e, err := scanEntry(tx.QueryRowContext(ctx, `SELECT `+entryCols+` FROM entries WHERE user_id = ? AND id = ?`, userID, id))
+	e, err := scanEntry(tx.QueryRowContext(ctx, `SELECT `+entryCols+` FROM entries WHERE ledger_id = ? AND id = ?`, ledgerID, id))
 	if err != nil {
 		return nil, err
 	}
@@ -263,27 +263,27 @@ func (s *Store) UpdateEntry(ctx context.Context, userID, id int64, in EntryInput
 		e.Date = d.Format(dateLayout)
 	}
 	if in.Type != nil {
-		if e.Type, err = s.ensureOption(ctx, tx, userID, KindType, *in.Type, ""); err != nil {
+		if e.Type, err = s.ensureOption(ctx, tx, ledgerID, KindType, *in.Type, ""); err != nil {
 			return nil, err
 		}
 	}
 	if in.Card != nil {
-		if e.Card, err = s.ensureOption(ctx, tx, userID, KindCard, *in.Card, ""); err != nil {
+		if e.Card, err = s.ensureOption(ctx, tx, ledgerID, KindCard, *in.Card, ""); err != nil {
 			return nil, err
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE entries SET name = ?, type = ?, amount = ?, date = ?, card = ?, updated_at = ?
-		WHERE user_id = ? AND id = ?`, e.Name, e.Type, cents, e.Date, e.Card, now(), userID, id); err != nil {
+		WHERE ledger_id = ? AND id = ?`, e.Name, e.Type, cents, e.Date, e.Card, now(), ledgerID, id); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return s.GetEntry(ctx, userID, id)
+	return s.GetEntry(ctx, ledgerID, id)
 }
 
 // DeleteEntries deletes the user's entries with these ids and returns how many went.
-func (s *Store) DeleteEntries(ctx context.Context, userID int64, ids []int64) (int64, error) {
+func (s *Store) DeleteEntries(ctx context.Context, ledgerID int64, ids []int64) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
@@ -291,11 +291,11 @@ func (s *Store) DeleteEntries(ctx context.Context, userID int64, ids []int64) (i
 		return 0, errors.New("delete at most 1000 entries at a time")
 	}
 	ph := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-	args := []any{userID}
+	args := []any{ledgerID}
 	for _, id := range ids {
 		args = append(args, id)
 	}
-	res, err := s.db.ExecContext(ctx, `DELETE FROM entries WHERE user_id = ? AND id IN (`+ph+`)`, args...)
+	res, err := s.db.ExecContext(ctx, `DELETE FROM entries WHERE ledger_id = ? AND id IN (`+ph+`)`, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -303,9 +303,9 @@ func (s *Store) DeleteEntries(ctx context.Context, userID int64, ids []int64) (i
 }
 
 // CountEntries reports how many entries the user has.
-func (s *Store) CountEntries(ctx context.Context, userID int64) (int, error) {
+func (s *Store) CountEntries(ctx context.Context, ledgerID int64) (int, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE user_id = ?`, userID).Scan(&n)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE ledger_id = ?`, ledgerID).Scan(&n)
 	return n, err
 }
 
@@ -324,7 +324,7 @@ type Suggestion struct {
 // left out), one per name with its latest entry: names starting with q
 // first, then the most used, then the most recent. With no q, every name
 // comes, most used first (the web app matches them itself, by pinyin too).
-func (s *Store) SuggestEntries(ctx context.Context, userID int64, q string, limit int) ([]Suggestion, error) {
+func (s *Store) SuggestEntries(ctx context.Context, ledgerID int64, q string, limit int) ([]Suggestion, error) {
 	q = strings.TrimSpace(q)
 	limit = min(max(limit, 1), 1000)
 	rows, err := s.db.QueryContext(ctx, `
@@ -333,11 +333,11 @@ func (s *Store) SuggestEntries(ctx context.Context, userID int64, q string, limi
 				COUNT(*) OVER (PARTITION BY lower(name)) AS uses,
 				ROW_NUMBER() OVER (PARTITION BY lower(name) ORDER BY date DESC, id DESC) AS rn
 			FROM entries
-			WHERE user_id = ? AND amount > 0 AND instr(lower(name), lower(?)) > 0
+			WHERE ledger_id = ? AND amount > 0 AND instr(lower(name), lower(?)) > 0
 		)
 		SELECT name, type, card, amount, date, uses FROM m WHERE rn = 1
 		ORDER BY instr(lower(name), lower(?)) = 1 DESC, uses DESC, date DESC, name
-		LIMIT ?`, userID, q, q, limit)
+		LIMIT ?`, ledgerID, q, q, limit)
 	if err != nil {
 		return nil, err
 	}
