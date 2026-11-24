@@ -143,7 +143,7 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 setActive(0)
               }}
               onKeyDown={onKey}
-              placeholder={t("What came back? Coffee 19.77")}
+              placeholder={t("What came back?")}
               aria-label={t("What was refunded")}
               autoComplete="off"
               maxLength={200}
@@ -164,7 +164,6 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               </Loading>
             ) : empty ? null : picked ? (
               <>
-                <div className="px-2 pb-1.5 text-[12px] text-ink-2">{matches.length === 1 ? t("Matches this purchase. It will be deleted.") : t("Matches these purchases. The one picked will be deleted.")}</div>
                 <ul role="listbox" aria-label={t("Matching purchases")} className="grid gap-0.5">
                   {matches.map((e, i) => (
                     <li key={e.id}>
@@ -189,7 +188,6 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               </>
             ) : canAdd ? (
               <>
-                <div className="px-2 pb-1.5 text-[12px] text-ink-2">{t("No purchase matches. It will be added as a refund.")}</div>
                 <div className="flex h-10 items-center gap-3 rounded-[10px] bg-good-wash px-2.5 text-[14px]">
                   <span className="min-w-0 flex-1 truncate font-medium">{name || t("Refund")}</span>
                   <span className="text-[12.5px] text-ink-2">{t("Today")}</span>
@@ -197,12 +195,12 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 </div>
               </>
             ) : (
-              <p className="px-2 pt-1 text-[13px] text-ink-2">{t("No purchase matches. Add the amount to record it as a refund.")}</p>
+              <p className="px-2 pt-1 text-[13px] text-ink-2">{t("No purchase matches.")}</p>
             )}
           </div>
 
           <div className="flex items-center gap-1.5 border-t border-rule px-5 py-3.5">
-            <span className="flex-1 text-[12px] text-muted-foreground">{matches.length > 1 ? t("↑↓ to pick, Enter to confirm") : t("Enter to confirm")}</span>
+            <span className="flex-1" />
             <button type="button" className="btn ghost" onClick={() => onOpenChange(false)}>
               {t("Cancel")}
             </button>

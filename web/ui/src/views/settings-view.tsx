@@ -13,23 +13,21 @@ import { applyTheme, useApp } from "@/lib/state"
 import { cn } from "@/lib/utils"
 import { locale, setLanguage, t, tn, tParts, type LangPref } from "@/lib/i18n"
 
-/** One group of settings: its name above, the controls in a card, a note below. */
-function Section({ id, title, note, children }: { id: string; title: string; note?: ReactNode; children: ReactNode }) {
+/** One group of settings: its name above, the controls in a card. */
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
     <section id={id} className="scroll-mt-6">
       <h2 className="px-1 pb-2 text-[13px] text-ink-2">{title}</h2>
       <div className="settings-card p-4 sm:p-5">{children}</div>
-      {note && <p className="px-1 pt-2 text-[12.5px] text-ink-2">{note}</p>}
     </section>
   )
 }
 
-function Field({ label, htmlFor, hint, children }: { label: string; htmlFor?: string; hint?: ReactNode; children: ReactNode }) {
+function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
   return (
     <div className="grid content-start gap-1">
       <label htmlFor={htmlFor} className="label">{label}</label>
       {children}
-      {hint && <p className="text-[12px] text-muted-foreground">{hint}</p>}
     </div>
   )
 }
@@ -97,7 +95,6 @@ function ModelSection() {
     <Section
       id="model"
       title={t("AI model")}
-      note={t("The agent runs on your own provider and API key. The key is stored encrypted on this server and is never sent back to the browser.")}
     >
       <form onSubmit={save} className="grid gap-5">
         <div className="overflow-hidden rounded-[12px] shadow-[inset_0_0_0_1px_var(--rule)]" role="radiogroup" aria-label={t("Provider")}>
@@ -134,13 +131,13 @@ function ModelSection() {
                 ))}
               </datalist>
             </Field>
-            <Field label={t("Base URL")} htmlFor="model-base" hint={p.kind === "anthropic" ? t("Leave empty for Anthropic's own API.") : undefined}>
+            <Field label={t("Base URL")} htmlFor="model-base">
               <input id="model-base" className="field" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder={p.kind === "anthropic" ? "https://api.anthropic.com" : "https://…/v1"} />
             </Field>
             <div className="sm:col-span-2">
-              <Field label={t("API key")} htmlFor="model-key" hint={hasKey ? t("A key is saved. Type a new one to replace it.") : p.keyOptional ? t("This provider doesn't need one.") : undefined}>
+              <Field label={t("API key")} htmlFor="model-key">
                 <div className="flex gap-2">
-                  <input id="model-key" className="field" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={hasKey ? "••••••••••••" : t("Paste your key")} />
+                  <input id="model-key" className="field" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={hasKey ? "••••••••••••" : p.keyOptional ? t("Optional") : t("Paste your key")} />
                   {hasKey && (
                     <button type="button" className="btn danger !h-[34px]" onClick={(e) => void save(e, true)} disabled={busy}>
                       {t("Remove key")}
@@ -188,7 +185,7 @@ function AgentAccessSection() {
   const command = fresh ? `claude mcp add --transport http paylist ${fresh.endpoint} --header "Authorization: Bearer ${fresh.token}"` : ""
 
   return (
-    <Section id="mcp" title={t("Agent access")} note={t("Paylist is an MCP server. Claude Code, Codex, Cursor and other agents can read and write your ledger with a token from here.")}>
+    <Section id="mcp" title={t("Agent access")}>
       <div className="grid gap-5">
         <Field label={t("Server address")}>
           <div className="flex gap-2">
@@ -403,7 +400,7 @@ function PreferencesSection() {
   }
   const currencies = CURRENCIES.includes(user.prefs.currency) ? CURRENCIES : [user.prefs.currency, ...CURRENCIES]
   return (
-    <Section id="prefs" title={t("Display")} note={t("How amounts and the page look. Changing the currency doesn't convert anything.")}>
+    <Section id="prefs" title={t("Display")}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("Currency")} htmlFor="pref-currency">
           <select id="pref-currency" className="field" value={user.prefs.currency} onChange={(e) => void save({ currency: e.target.value })}>
@@ -446,12 +443,12 @@ function PasswordSection() {
     }
   }
   return (
-    <Section id="password" title={t("Password")} note={t("Changing it signs you out on your other devices.")}>
+    <Section id="password" title={t("Password")}>
       <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
         <Field label={t("Current password")} htmlFor="pw-current">
           <input id="pw-current" className="field" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
         </Field>
-        <Field label={t("New password")} htmlFor="pw-new" hint={t("At least 8 characters.")}>
+        <Field label={t("New password")} htmlFor="pw-new">
           <input id="pw-new" className="field" type="password" autoComplete="new-password" minLength={8} value={next} onChange={(e) => setNext(e.target.value)} required />
         </Field>
         <div>
@@ -495,7 +492,7 @@ function MembersSection() {
     }
   }
   return (
-    <Section id="members" title={t("Members")} note={t("Everyone on this server keeps their own ledger, types, cards, model and key.")}>
+    <Section id="members" title={t("Members")}>
       <div className="grid gap-6">
         <table className="w-full text-[13.5px]">
           <thead>
@@ -574,7 +571,7 @@ export function SettingsView() {
       <div className="mx-auto mt-6 grid max-w-[700px] gap-8">
         <ModelSection />
         <AgentAccessSection />
-        <Section id="options" title={t("Types and cards")} note={t("Renaming one renames it on every entry. Deleting one clears it from the entries that have it.")}>
+        <Section id="options" title={t("Types and cards")}>
           <div className="grid gap-8 sm:grid-cols-2">
             <OptionList kind="type" title={t("Types")} />
             <OptionList kind="card" title={t("Cards")} />

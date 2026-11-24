@@ -286,7 +286,6 @@ export function EntryDialog({
               <span className={name_}><ChevronDownCircleIcon /> {t("Card")}</span>
               <OptionSelect kind="card" label={t("Card")} placeholder={t("Empty")} value={card} options={options.cards} onChange={setCard} className="rounded-md hover:bg-wash" />
             </div>
-            <p className="mt-2 text-[12.5px] text-muted-foreground">{t("A refund is a negative amount, such as −20.")}</p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5 border-t border-rule px-5 py-3.5">
             {entry ? (

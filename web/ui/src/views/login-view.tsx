@@ -46,9 +46,6 @@ export function LoginView({ setup, onSignedIn }: { setup: boolean; onSignedIn: (
       <div className="flex flex-1 items-center justify-center py-10">
         <form onSubmit={submit} className="card w-full max-w-[400px] p-8">
           <h1 className="text-[22px] leading-tight font-semibold">{setup ? t("Set up Paylist") : t("Sign in to Paylist")}</h1>
-          <p className="mt-2 text-[14px] text-ink-2">
-            {setup ? t("Create the admin account for this server. You can add the rest of the household in Settings.") : t("Your spending, month by month, on this server.")}
-          </p>
           <div className="mt-8 grid gap-4">
             {setup && (
               <label className="grid gap-1">
@@ -72,7 +69,6 @@ export function LoginView({ setup, onSignedIn }: { setup: boolean; onSignedIn: (
                 autoComplete={setup ? "new-password" : "current-password"}
                 minLength={setup ? 8 : undefined}
               />
-              {setup && <span className="text-[12px] text-muted-foreground">{t("At least 8 characters.")}</span>}
             </label>
             {error && <p role="alert" className="border-l-2 border-red pl-3 text-[13px] text-red">{error}</p>}
             <button type="submit" disabled={busy} className="btn mt-2 !h-9 w-full">

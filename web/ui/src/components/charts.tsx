@@ -329,12 +329,10 @@ export function CalendarHeat({
       </div>
       <div className="mt-3 flex items-center justify-between gap-2 text-[12px] text-muted-foreground">
         <span className="min-h-[18px] truncate">
-          {h ? (
+          {h && (
             <>
               <span className="figure font-semibold text-foreground">{format(h.total)}</span> · {dateLabel(h.date, { weekday: "short", month: "short", day: "numeric" })} · {tn(h.count, "{n} entry", "{n} entries")}
             </>
-          ) : (
-            t("Hover a day for its total")
           )}
         </span>
         <span className="flex shrink-0 items-center gap-1">

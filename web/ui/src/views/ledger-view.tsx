@@ -468,7 +468,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
           )}
         </table>
         {entries !== null && entries.length === 0 && !drafting && (
-          <p className="px-3 pt-1 pb-3 text-[13.5px] text-ink-2">{t("Nothing for {month} yet. Click New, press N, or ask the agent.", { month: monthLabel(month) })}</p>
+          <p className="px-3 pt-1 pb-3 text-[13.5px] text-ink-2">{t("Nothing for {month} yet.", { month: monthLabel(month) })}</p>
         )}
         {entries !== null && entries.length > 0 && shown.length === 0 && <p className="px-3 pt-1 pb-3 text-[13.5px] text-ink-2">{t("No entries match.")}</p>}
       </div>
@@ -489,7 +489,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
           </Loading>
         )}
         {entries !== null && shown.length === 0 && (
-          <p className="py-6 text-[13.5px] text-muted-foreground">{filtered ? t("No entries match.") : t("Nothing for {month} yet. Tap New to add one.", { month: monthLabel(month) })}</p>
+          <p className="py-6 text-[13.5px] text-muted-foreground">{filtered ? t("No entries match.") : t("Nothing for {month} yet.", { month: monthLabel(month) })}</p>
         )}
         <div>
           {shown.map((e, i) => (

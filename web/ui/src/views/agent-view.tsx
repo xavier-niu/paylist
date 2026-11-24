@@ -309,17 +309,11 @@ export function AgentView({ chatId }: { chatId: string }) {
                 <SparklesIcon className="size-5" />
               </span>
               <h2 className="mt-4 text-[15px] font-semibold">{t("Ask about your spending, or tell me what to write down")}</h2>
-              <p className="mt-1 max-w-md text-[13px] text-ink-2">
-                {model.active ? (
-                  <>{t("I read and change your ledger through Paylist's MCP tools, and every step shows up here.")}</>
-                ) : (
-                  <>
-                    {tParts("I run on your own AI provider and key. {link} to start.", {
-                      link: <a href="#/settings" className="text-ink underline underline-offset-3">{t("Choose a model in Settings")}</a>,
-                    })}
-                  </>
-                )}
-              </p>
+              {!model.active && (
+                <a href="#/settings" className="mt-1.5 text-[13px] text-ink-2 underline underline-offset-3 hover:text-ink">
+                  {t("Choose a model in Settings")}
+                </a>
+              )}
             </div>
           )}
           {items.map((it, i) => {
@@ -391,7 +385,6 @@ export function AgentView({ chatId }: { chatId: string }) {
             )}
           </div>
         </div>
-        <p className="mt-2 text-center text-[12px] text-ink-2">{t("The agent can change your ledger. Enter sends; Shift+Enter starts a new line.")}</p>
       </form>
       {confirmEl}
     </div>
