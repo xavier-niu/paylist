@@ -32,10 +32,10 @@ Click a day, a type or a card to list its entries right there, and click an entr
 
 One month as a table, edited in place, like a spreadsheet.
 
-- **Press N** anywhere to add an entry. The form stays open for the next one, and as you type a name it offers the ones you've used before, filling in the type, card and last amount.
-- **Press R** for a refund: type what came back ("coffee 19.77"). If it matches a recent purchase, that purchase is deleted (with Undo); if not, the refund is added as a negative amount.
-- Click any cell to change it. Types and cards are colored options; type a new name to create one.
-- Filter by type or card, sort, search, select rows to delete several at once, and export the month as CSV.
+- **Press N** anywhere to add an entry. The form stays open for the next one, and as you type a name it offers the ones you've used before (by pinyin too: "kf" finds 咖啡), filling in the type, card and last amount.
+- **Press R** for a refund, filled in like a new entry. If a purchase from the last 120 days has the same name and amount, it is deleted (with Undo); if not, the refund is added as a negative amount.
+- Click any cell to change it; Enter or Esc saves. Types and cards are colored options, found by name or pinyin; a new name is created once you confirm it.
+- **Filter** by name, type, amount, date or card, each a chip you can change, and **Sort** by date, amount or name, setting the one you like as the default. Search, select rows to delete several at once, and export the month as CSV.
 - The header keeps the month to date and the change from last month in view; the sidebar keeps this month's spending by type and your recent months a click away.
 
 ## Agent
@@ -70,7 +70,7 @@ claude mcp add --transport http paylist https://pay.example.com/mcp \
 | `add_entries` | Add entries, all or none. The date defaults to today; a new type or card becomes an option |
 | `update_entry` | Change the fields given |
 | `delete_entries` | Delete entries by id |
-| `refund` | Record a refund the way the ledger's Refund button does: a purchase from the last 120 days that matches the name and/or amount is deleted; with several matches, they come back to pick from; with none, the refund is added as a negative amount |
+| `refund` | Record a refund the way the ledger's Refund form does: a purchase from the last 120 days with the same name and amount is deleted; with several, they come back to pick from; with none, the refund is added as a negative amount under the type, card and date given |
 | `suggest_entries` | Names used before that contain some text, with how each was last entered (type, card, amount), to fill in what the user leaves out |
 | `list_options` | The types and cards, with their colors and how many entries use each |
 | `manage_option` | Create, rename, recolor or delete a type or card; renaming carries through to every entry |
