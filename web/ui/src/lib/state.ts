@@ -15,8 +15,8 @@ export interface AppState {
   /** Bumped when the table changed elsewhere (the agent), so pages reload. */
   tableVersion: number
   bumpTable: () => void
-  /** Opens the New entry form, optionally on a date. */
-  quickAdd: (date?: string) => void
+  /** Opens the New entry form (dated today). */
+  quickAdd: () => void
   /** Opens an entry's form, to change or delete it. */
   editEntry: (e: Entry) => void
   /** Opens the refund dialog (R). */

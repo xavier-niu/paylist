@@ -74,7 +74,7 @@ export function App() {
   const [byType, setByType] = useState<GroupTotal[]>([])
   const [months, setMonths] = useState<MonthTotal[]>([])
   const [allMonths, setAllMonths] = useState(false)
-  const [form, setForm] = useState<{ open: boolean; entry?: Entry | null; date?: string }>({ open: false })
+  const [form, setForm] = useState<{ open: boolean; entry?: Entry | null }>({ open: false })
   const [refunding, setRefunding] = useState(false)
 
   useEffect(() => {
@@ -188,7 +188,7 @@ export function App() {
     reloadOptions,
     tableVersion,
     bumpTable: () => setTableVersion((v) => v + 1),
-    quickAdd: (date) => setForm({ open: true, date }),
+    quickAdd: () => setForm({ open: true }),
     editEntry: (entry) => setForm({ open: true, entry }),
     refund: () => setRefunding(true),
   }
@@ -338,7 +338,7 @@ export function App() {
           </main>
         </div>
       </div>
-      <EntryDialog open={form.open} entry={form.entry} initialDate={form.date} onOpenChange={(open) => setForm((f) => ({ ...f, open }))} />
+      <EntryDialog open={form.open} entry={form.entry} onOpenChange={(open) => setForm((f) => ({ ...f, open }))} />
       <RefundDialog open={refunding} onOpenChange={setRefunding} />
       <Toaster position="bottom-center" />
     </AppContext.Provider>

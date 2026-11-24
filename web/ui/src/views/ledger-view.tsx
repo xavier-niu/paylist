@@ -356,7 +356,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
             <button type="button" className="pill shrink-0" onClick={refund} title={t("Refund (R)")}>
               <Undo2Icon /> {t("Refund")}
             </button>
-            <button type="button" className="pill dark shrink-0" onClick={() => quickAdd(isThisMonth ? undefined : `${month}-01`)} title={t("New entry (N)")}>
+            <button type="button" className="pill dark shrink-0" onClick={quickAdd} title={t("New entry (N)")}>
               <PlusIcon /> {t("New")}
             </button>
           </>
@@ -435,7 +435,6 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
             {drafting && entries !== null && (
               <Draft
                 month={month}
-                isThisMonth={isThisMonth}
                 onDone={() => setDrafting(false)}
                 onAdded={(e) => {
                   setEntries((l) => [...(l ?? []), e])
@@ -511,17 +510,15 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
 }
 
 /** The new row: fill it in and press Enter. It stays open for the next one; Escape closes it. */
-function Draft({ month, onAdded, onDone, isThisMonth }: { month: string; onAdded: (e: Entry) => void; onDone: () => void; isThisMonth: boolean }) {
+function Draft({ month, onAdded, onDone }: { month: string; onAdded: (e: Entry) => void; onDone: () => void }) {
   const { options, user } = useApp()
-  const defaultDate = isThisMonth ? today() : `${month}-01`
   const [name, setName] = useState("")
   const [type, setType] = useState("")
   const [amount, setAmount] = useState("")
-  const [date, setDate] = useState(defaultDate)
+  const [date, setDate] = useState(today)
   const [card, setCard] = useState("")
   const [busy, setBusy] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
-  useEffect(() => setDate(defaultDate), [defaultDate])
   useEffect(() => nameRef.current?.focus(), [])
 
   const add = async () => {

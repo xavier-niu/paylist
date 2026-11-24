@@ -30,12 +30,10 @@ export function EntryDialog({
   open,
   onOpenChange,
   entry,
-  initialDate,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
   entry?: Entry | null
-  initialDate?: string
 }) {
   const { options, user, reloadOptions, bumpTable } = useApp()
   const [name, setName] = useState("")
@@ -59,9 +57,9 @@ export function EntryDialog({
     } else {
       setName("")
       setAmount("")
-      setDate(initialDate || today())
+      setDate(today())
     }
-  }, [open, entry, initialDate])
+  }, [open, entry])
 
   const n = parseAmount(amount)
   const ready = name.trim() !== "" && Number.isFinite(n)
