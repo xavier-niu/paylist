@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { BotIcon, ChartColumnIcon, LogOutIcon, MenuIcon, NotebookTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SettingsIcon, type LucideIcon } from "lucide-react"
+import { BotIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon, NotebookTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SettingsIcon, type LucideIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { EntryDialog } from "@/components/entry-dialog"
@@ -20,11 +20,11 @@ import { cn } from "@/lib/utils"
 import { AgentView } from "@/views/agent-view"
 import { LoginView } from "@/views/login-view"
 import { SettingsView } from "@/views/settings-view"
-import { StatsView } from "@/views/stats-view"
+import { OverviewView } from "@/views/overview-view"
 import { LedgerView } from "@/views/ledger-view"
 import { setLanguage, t, tn, useLang } from "@/lib/i18n"
 
-type Route = "ledger" | "stats" | "agent" | "settings"
+type Route = "overview" | "ledger" | "agent" | "settings"
 
 const SIDEBAR_KEY = "paylist-sidebar"
 
@@ -32,17 +32,18 @@ const SIDEBAR_KEY = "paylist-sidebar"
 const RECENT_MONTHS = 5
 
 const NAV: { route: Route; label: () => string; icon: LucideIcon }[] = [
+  { route: "overview", label: () => t("Overview"), icon: LayoutDashboardIcon },
   { route: "ledger", label: () => t("Ledger"), icon: NotebookTextIcon },
-  { route: "stats", label: () => t("Statistics"), icon: ChartColumnIcon },
   { route: "agent", label: () => t("Agent"), icon: BotIcon },
 ]
 
 function readRoute(): { route: Route; arg: string; arg2: string } {
   const [, route = "", arg = "", arg2 = ""] = location.hash.split("/")
-  const known = ["ledger", "stats", "agent", "settings"]
-  // #/ledger/… is the ledger's old address; links to it still work.
-  const r = route === "table" ? "ledger" : route
-  return { route: (known.includes(r) ? r : "ledger") as Route, arg: decodeURIComponent(arg), arg2: decodeURIComponent(arg2) }
+  const known = ["overview", "ledger", "agent", "settings"]
+  // Old addresses still work: #/table/… was the ledger, #/stats the overview.
+  const r = ({ table: "ledger", stats: "overview" } as Record<string, string>)[route] ?? route
+  // The overview is the start page.
+  return { route: (known.includes(r) ? r : "overview") as Route, arg: decodeURIComponent(arg), arg2: decodeURIComponent(arg2) }
 }
 
 export function App() {
@@ -334,7 +335,7 @@ export function App() {
           </header>
           <main className="flex min-h-0 flex-1 flex-col">
             {loc.route === "ledger" && <LedgerView month={ledgerMonth} typeParam={loc.arg2} setMonth={(m) => (location.hash = `#/ledger/${m}`)} />}
-            {loc.route === "stats" && <StatsView />}
+            {loc.route === "overview" && <OverviewView />}
             {loc.route === "agent" && <AgentView chatId={loc.arg} />}
             {loc.route === "settings" && <SettingsView />}
           </main>

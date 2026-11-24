@@ -77,7 +77,6 @@ export function ColumnChart({
   formatTick,
   onSelect,
   label,
-  marks,
 }: {
   data: Column[]
   height?: number
@@ -85,8 +84,6 @@ export function ColumnChart({
   formatTick: (v: number, compact: boolean) => string
   onSelect?: (key: string) => void
   label: string
-  /** Dashed dividers before the given columns, labelled above the plot: where a new month starts. */
-  marks?: { index: number; label: string }[]
 }) {
   const [ref, width] = useWidth<HTMLDivElement>()
   const [hover, setHover] = useState<number | null>(null)
@@ -96,7 +93,7 @@ export function ColumnChart({
   const hi = ticks[ticks.length - 1]
   const compact = Math.max(...ticks.map(Math.abs)) >= 10000
   const tickLabels = ticks.map((t) => formatTick(t, compact))
-  const pad = { top: marks?.length ? 24 : 10, right: 4, bottom: 24, left: axisTextWidth(tickLabels) + 12 }
+  const pad = { top: 10, right: 4, bottom: 24, left: axisTextWidth(tickLabels) + 12 }
   const plotW = Math.max(0, width - pad.left - pad.right)
   const plotH = height - pad.top - pad.bottom
   const band = data.length ? plotW / data.length : 0
@@ -118,15 +115,6 @@ export function ColumnChart({
               <text x={pad.left - 8} y={y(t)} dy="0.32em" textAnchor="end">{tickLabels[i]}</text>
             </g>
           ))}
-          {marks?.map((m) => {
-            const x = Math.round(pad.left + band * m.index) + 0.5
-            return (
-              <g key={m.index}>
-                <line x1={x} x2={x} y1={pad.top - 16} y2={pad.top + plotH} stroke="var(--viz-axis)" strokeDasharray="3 3" />
-                <text x={x + 5} y={pad.top - 8} textAnchor="start" style={{ fill: "var(--ink-2)", fontWeight: 500 }}>{m.label}</text>
-              </g>
-            )
-          })}
           {hover !== null && <rect className="hover-band" x={pad.left + band * hover} y={pad.top} width={band} height={plotH} />}
           {data.map((d, i) => (
             <path key={d.key} className={cn("bar", d.soft && hover !== i && "soft")} d={columnPath(pad.left + band * i + (band - barW) / 2, barW, y0, y(d.value))} />
@@ -165,6 +153,7 @@ export function PaceChart({
   formatTick,
   labels,
   compact,
+  height: fixedHeight,
 }: {
   current: number[] // cumulative totals for each day of the month
   previous: number[] // cumulative totals for every day of the month before
@@ -175,11 +164,13 @@ export function PaceChart({
   labels: [string, string] // series names
   /** No axes, just the first and last day: for a figure's own card. */
   compact?: { start: string; end: string }
+  /** The chart's height; by default 150 compact, 250 otherwise. */
+  height?: number
 }) {
   const [ref, width] = useWidth<HTMLDivElement>()
   const [hover, setHover] = useState<number | null>(null)
   const id = useId()
-  const height = compact ? 150 : 250
+  const height = fixedHeight ?? (compact ? 150 : 250)
   const days = Math.max(daysInMonth, previous.length)
   const cur = current.slice(0, todayIndex + 1)
   const ticks = niceTicks(0, Math.max(1, ...cur, ...previous))
@@ -290,10 +281,13 @@ export function CalendarHeat({
   days,
   format,
   onPick,
+  picked = null,
 }: {
   days: { date: string; total: number; count: number }[]
   format: (v: number) => string
   onPick?: (date: string) => void
+  /** The selected day, outlined. */
+  picked?: string | null
 }) {
   const [hover, setHover] = useState<string | null>(null)
   if (days.length === 0) return null
@@ -323,7 +317,8 @@ export function CalendarHeat({
               onBlur={() => setHover(null)}
               onClick={() => onPick?.(d.date)}
               aria-label={`${dateLabel(d.date)}: ${format(d.total)}, ${tn(d.count, "{n} entry", "{n} entries")}`}
-              className={cn("figure flex aspect-square min-h-11 flex-col items-start justify-between rounded-[5px] p-1 text-left outline-offset-1 hover:outline-2 hover:outline-ink sm:p-1.5", isToday && "outline-2 outline-blue")}
+              className={cn("figure flex aspect-square flex-col items-start justify-between rounded-[5px] p-1 text-left outline-offset-1 hover:outline-2 hover:outline-ink sm:px-1.5", isToday && "outline-2 outline-blue", d.date === picked && "outline-2 outline-ink", onPick && "cursor-pointer")}
+              aria-pressed={onPick ? d.date === picked : undefined}
               style={{ background: `var(--seq-${s})`, color: s >= 4 ? "var(--seq-text)" : s > 0 ? "var(--ink)" : "var(--muted-foreground)" }}
             >
               <span className="text-[10.5px] leading-none opacity-70">{Number(d.date.slice(8))}</span>
@@ -352,7 +347,19 @@ export function CalendarHeat({
   )
 }
 
-type Part = { name: string; color: string; total: number; count: number; other?: boolean }
+type Part = { name: string; color: string; total: number; count: number; other?: boolean; members?: string[] }
+
+/** A group picked in a donut: its own name, or for "Other" the names folded into it. */
+export interface DonutPick {
+  key: string
+  label: string
+  names: string[]
+  color: string
+  total: number
+  count: number
+}
+
+const OTHER_KEY = "\u0000other"
 
 /** Slices past the sixth fold into "Other", so each one stays big enough to read. */
 function foldParts(data: Part[], max = 7): Part[] {
@@ -361,7 +368,14 @@ function foldParts(data: Part[], max = 7): Part[] {
   const rest = pos.slice(max - 1)
   return [
     ...pos.slice(0, max - 1),
-    { name: t("Other"), color: "gray", total: rest.reduce((s, d) => s + d.total, 0), count: rest.reduce((s, d) => s + d.count, 0), other: true },
+    {
+      name: t("Other"),
+      color: "gray",
+      total: rest.reduce((s, d) => s + d.total, 0),
+      count: rest.reduce((s, d) => s + d.count, 0),
+      other: true,
+      members: rest.map((d) => d.name),
+    },
   ]
 }
 
@@ -380,14 +394,16 @@ function arcPath(cx: number, cy: number, r0: number, r1: number, a0: number, a1:
 /**
  * Part of a whole as a donut with its legend: each slice in its group's own
  * color, a gap between slices, the total in the middle. Hovering a slice or a
- * legend row picks that group out and shows it in the middle.
+ * legend row picks that group out and shows it in the middle; clicking one
+ * (with onPick) selects it, and clicking it again lets it go.
  */
 export function Donut({
   data,
   format,
   label,
   noun,
-  href,
+  picked = null,
+  onPick,
 }: {
   data: Part[]
   format: (v: number) => string
@@ -395,10 +411,20 @@ export function Donut({
   label: string
   /** The count under the total: (n) => "9 types". */
   noun: (n: number) => string
-  href?: (name: string) => string
+  /** The selected group's key (its name, "" for none), or null. */
+  picked?: string | null
+  onPick?: (p: DonutPick | null) => void
 }) {
   const [hover, setHover] = useState<number | null>(null)
   const parts = foldParts(data)
+  const keyOf = (d: Part) => (d.other ? OTHER_KEY : d.name)
+  const pickedIndex = picked === null ? -1 : parts.findIndex((d) => keyOf(d) === picked)
+  const focus = hover ?? (pickedIndex >= 0 ? pickedIndex : null)
+  const toggle = (d: Part) => {
+    if (!onPick) return
+    if (keyOf(d) === picked) return onPick(null)
+    onPick({ key: keyOf(d), label: d.name || t("None"), names: d.members ?? [d.name], color: d.name && !d.other ? d.color : "gray", total: d.total, count: d.count })
+  }
   const sum = parts.reduce((s, d) => s + d.total, 0)
   if (parts.length === 0) return <p className="py-6 text-[13.5px] text-ink-2">{t("Nothing this month.")}</p>
   const size = 168, c = size / 2, r1 = size / 2 - 2, r0 = r1 - 26
@@ -408,7 +434,7 @@ export function Donut({
     a += (d.total / sum) * Math.PI * 2
     return { d, a0, a1: a }
   })
-  const h = hover === null ? null : parts[hover]
+  const h = focus === null ? null : parts[focus]
   const name = (d: Part) => d.name || t("None")
   const share = (v: number) => {
     const pct = (v / sum) * 100
@@ -428,9 +454,10 @@ export function Donut({
               stroke="var(--sheet)"
               strokeWidth={slices.length > 1 ? 2 : 0}
               strokeLinejoin="round"
-              opacity={hover === null || hover === i ? 1 : 0.35}
+              opacity={focus === null || focus === i ? 1 : 0.35}
               onMouseEnter={() => setHover(i)}
-              className="transition-opacity"
+              onClick={() => toggle(d)}
+              className={cn("transition-opacity", onPick && "cursor-pointer")}
             />
           ))}
         </svg>
@@ -459,12 +486,17 @@ export function Donut({
               <span className="w-11 text-right text-[12.5px] text-ink-2 tabular-nums">{share(d.total)}</span>
             </>
           )
-          const row = cn("flex h-8 items-center gap-2.5 rounded-[8px] px-2 text-[13.5px]", hover === i && "bg-wash")
+          const row = cn(
+            "flex h-8 w-full items-center gap-2.5 rounded-[8px] px-2 text-left text-[13.5px]",
+            i === pickedIndex ? "bg-fill" : hover === i && "bg-wash",
+          )
           const title = `${name(d)}: ${format(d.total)}, ${tn(d.count, "{n} entry", "{n} entries")}`
           return (
             <li key={name(d)} data-color={d.name && !d.other ? d.color : "gray"} onMouseEnter={() => setHover(i)}>
-              {href && d.name && !d.other ? (
-                <a href={href(d.name)} title={title} className={row}>{body}</a>
+              {onPick ? (
+                <button type="button" title={title} className={row} aria-pressed={i === pickedIndex} onClick={() => toggle(d)}>
+                  {body}
+                </button>
               ) : (
                 <div title={title} className={row}>{body}</div>
               )}

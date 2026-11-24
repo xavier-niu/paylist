@@ -15,15 +15,16 @@ export function Money({ value, currency, className }: { value: number; currency:
   )
 }
 
-/** The change against another figure, as a tinted pill: ↑ ¥10.98 (more spending is red). */
-export function Delta({ now, before, currency }: { now: number; before: number; currency: string }) {
+/** The change against another figure, as a tinted pill: ↑ ¥10.98 (12.5%) (more spending is red). */
+export function Delta({ now, before, currency, title }: { now: number; before: number; currency: string; title?: string }) {
   if (!before) return null
   const diff = now - before
-  if (Math.abs(diff) < 0.005) return <span className="delta bg-wash text-ink-2">±0</span>
+  if (Math.abs(diff) < 0.005) return <span className="delta bg-wash text-ink-2" title={title}>±0</span>
   const up = diff > 0
+  const pct = Math.abs(diff / before) * 100
   return (
-    <span className={cn("delta", up ? "up" : "down")}>
-      {up ? "↑" : "↓"} {money(Math.abs(diff), currency)}
+    <span className={cn("delta", up ? "up" : "down")} title={title}>
+      {up ? "↑" : "↓"} {money(Math.abs(diff), currency)} ({pct.toFixed(1)}%)
     </span>
   )
 }
