@@ -128,7 +128,6 @@ export function OverviewView() {
             <div className="w-full max-w-[460px] min-w-0 lg:max-w-none lg:border-l lg:border-rule lg:pl-8">
               <h2 className="card-title mb-3">{t("Day by day")}</h2>
               <CalendarHeat days={stats.days} format={fmt} onPick={toggleDay} picked={pick?.kind === "day" ? pick.key : null} />
-              {pick?.kind === "day" && list(pick)}
             </div>
             </div>
 
@@ -144,7 +143,6 @@ export function OverviewView() {
                   picked={pick?.kind === "type" ? pick.key : null}
                   onPick={fromDonut("type")}
                 />
-                {pick?.kind === "type" && list(pick)}
               </div>
               <div className="min-w-0 lg:border-l lg:border-rule lg:pl-10">
                 <h2 className="card-title mb-4">{t("By card")}</h2>
@@ -156,7 +154,6 @@ export function OverviewView() {
                   picked={pick?.kind === "card" ? pick.key : null}
                   onPick={fromDonut("card")}
                 />
-                {pick?.kind === "card" && list(pick)}
               </div>
             </div>
           </section>
@@ -184,6 +181,7 @@ export function OverviewView() {
           </section>
         </div>
       )}
+      {pick && list(pick)}
     </div>
   )
 }
