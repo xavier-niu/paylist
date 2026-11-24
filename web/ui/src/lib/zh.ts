@@ -139,6 +139,9 @@ export const ZH: Record<string, string> = {
   "No types yet. Type a name.": "还没有分类，输入名称即可新建。",
   "No cards yet. Type a name.": "还没有支付方式，输入名称即可新建。",
   "Create “{name}”": "新建“{name}”",
+  "Create the type “{name}”?": "新建分类“{name}”？",
+  "Create the card “{name}”?": "新建支付方式“{name}”？",
+  "Create": "新建",
 
   // Statistics
   "This month's spending": "本月支出",

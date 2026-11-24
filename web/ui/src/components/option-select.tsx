@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { CheckIcon } from "lucide-react"
 
+import { useConfirm } from "@/components/confirm"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { Option } from "@/lib/api"
 import { matches } from "@/lib/search"
@@ -53,16 +54,28 @@ export function OptionSelect({
     ...(value && !q ? [{ t: "none" as const }] : []),
   ]
 
+  const [ask, confirmEl] = useConfirm()
   const pick = (name: string) => {
     setOpen(false)
     setQuery("")
     if (name !== value) onChange(name)
   }
+  // A new type or card is easy to make by a slip of the keyboard, so it's confirmed first.
+  const create = (name: string) => {
+    setOpen(false)
+    setQuery("")
+    ask({
+      title: kind === "type" ? t("Create the type “{name}”?", { name }) : t("Create the card “{name}”?", { name }),
+      action: t("Create"),
+      tone: "default",
+      run: () => onChange(name),
+    })
+  }
   const choose = (i: number) => {
     const r = rows[i]
     if (!r) return
     if (r.t === "opt") pick(r.o.name)
-    else if (r.t === "create") pick(query.trim())
+    else if (r.t === "create") create(query.trim())
     else pick("")
   }
   const onKey = (e: KeyboardEvent) => {
@@ -79,68 +92,71 @@ export function OptionSelect({
   }
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o)
-        setQuery("")
-        setActive(0)
-      }}
-    >
-      <PopoverTrigger asChild>
-        <button type="button" className={cn("cell", className)} aria-label={`${label}: ${value || t("none")}`}>
-          {value ? <Tag name={value} color={current?.color ?? "gray"} className="!shadow-none !bg-transparent !px-0" /> : <span className="text-muted-foreground/70">{placeholder}</span>}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        sideOffset={2}
-        className="w-64 gap-0 overflow-hidden rounded-[14px] border-0 p-0 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0"
-        onOpenAutoFocus={(e) => {
-          e.preventDefault()
-          inputRef.current?.focus()
+    <>
+      <Popover
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o)
+          setQuery("")
+          setActive(0)
         }}
       >
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setActive(0)
+        <PopoverTrigger asChild>
+          <button type="button" className={cn("cell", className)} aria-label={`${label}: ${value || t("none")}`}>
+            {value ? <Tag name={value} color={current?.color ?? "gray"} className="!shadow-none !bg-transparent !px-0" /> : <span className="text-muted-foreground/70">{placeholder}</span>}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          sideOffset={2}
+          className="w-64 gap-0 overflow-hidden rounded-[14px] border-0 p-0 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault()
+            inputRef.current?.focus()
           }}
-          onKeyDown={onKey}
-          placeholder={t("Search or create")}
-          className="h-10 w-full border-b border-rule bg-transparent px-3.5 text-[14px] outline-none placeholder:text-muted-foreground"
-          maxLength={40}
-        />
-        <div className="max-h-64 overflow-y-auto py-1" role="listbox" aria-label={label}>
-                    {rows.length === 0 && <p className="px-3 py-2 text-[13px] text-muted-foreground">{kind === "type" ? t("No types yet. Type a name.") : t("No cards yet. Type a name.")}</p>}
-          {rows.map((r, i) => (
-            <button
-              key={r.t === "opt" ? r.o.id : r.t}
-              type="button"
-              role="option"
-              aria-selected={i === active}
-              onMouseEnter={() => setActive(i)}
-              onClick={() => choose(i)}
-              className={cn("mx-1 flex h-9 w-[calc(100%-8px)] items-center gap-2 rounded-[8px] px-2.5 text-left text-[14px]", i === active && "bg-wash")}
-            >
-              {r.t === "opt" && (
-                <>
-                  <span className="flex flex-1 items-center gap-2" data-color={r.o.color}><span className="dot" />{r.o.name}</span>
-                  {r.o.name.toLowerCase() === value.toLowerCase() && <CheckIcon className="size-4 text-ink" />}
-                </>
-              )}
-              {r.t === "create" && (
-                <span className="truncate">
-                  {t("Create “{name}”", { name: query.trim() })}
-                </span>
-              )}
-              {r.t === "none" && <span className="text-muted-foreground">{t("Clear")}</span>}
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+        >
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setActive(0)
+            }}
+            onKeyDown={onKey}
+            placeholder={t("Search or create")}
+            className="h-10 w-full border-b border-rule bg-transparent px-3.5 text-[14px] outline-none placeholder:text-muted-foreground"
+            maxLength={40}
+          />
+          <div className="max-h-64 overflow-y-auto py-1" role="listbox" aria-label={label}>
+                      {rows.length === 0 && <p className="px-3 py-2 text-[13px] text-muted-foreground">{kind === "type" ? t("No types yet. Type a name.") : t("No cards yet. Type a name.")}</p>}
+            {rows.map((r, i) => (
+              <button
+                key={r.t === "opt" ? r.o.id : r.t}
+                type="button"
+                role="option"
+                aria-selected={i === active}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => choose(i)}
+                className={cn("mx-1 flex h-9 w-[calc(100%-8px)] items-center gap-2 rounded-[8px] px-2.5 text-left text-[14px]", i === active && "bg-wash")}
+              >
+                {r.t === "opt" && (
+                  <>
+                    <span className="flex flex-1 items-center gap-2" data-color={r.o.color}><span className="dot" />{r.o.name}</span>
+                    {r.o.name.toLowerCase() === value.toLowerCase() && <CheckIcon className="size-4 text-ink" />}
+                  </>
+                )}
+                {r.t === "create" && (
+                  <span className="truncate">
+                    {t("Create “{name}”", { name: query.trim() })}
+                  </span>
+                )}
+                {r.t === "none" && <span className="text-muted-foreground">{t("Clear")}</span>}
+              </button>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+      {confirmEl}
+    </>
   )
 }
