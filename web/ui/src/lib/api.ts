@@ -220,8 +220,8 @@ export const api = {
   /** The purchases a refund would undo (see store.RefundMatches), newest first. */
   refundMatches: (name: string, amount: number | null) =>
     request<Entry[]>("GET", "/api/refund/matches" + q({ name, amount: amount ?? undefined, today: today() })),
-  /** Applies a refund: a picked purchase by id, or a name and/or amount. */
-  refund: (body: { id?: number; name?: string; amount?: number }) => request<RefundResult>("POST", "/api/refund", { ...body, today: today() }),
+  /** Applies a refund: a picked purchase by id, or its name and amount (with what to record it under if nothing matches). */
+  refund: (body: { id?: number; name?: string; amount?: number; type?: string; card?: string; date?: string }) => request<RefundResult>("POST", "/api/refund", { ...body, today: today() }),
   /** Names used before that hold the text, one per name with how it was last entered. */
   suggest: (text: string) => request<Suggestion[]>("GET", "/api/entries/suggest" + q({ q: text })),
   createEntry: (e: EntryInput) => request<Entry>("POST", "/api/entries", e),

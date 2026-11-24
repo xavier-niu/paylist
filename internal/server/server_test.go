@@ -160,17 +160,17 @@ func TestTableAPI(t *testing.T) {
 	}
 
 	// The Refund dialog: matches, then a refund by the picked id.
-	if m := decodeJSON[[]store.Entry](t, e.do(t, c, "GET", "/api/refund/matches?name=lun&amount=30&today=2026-11-20", nil)); len(m) != 1 || m[0].ID != created.ID {
+	if m := decodeJSON[[]store.Entry](t, e.do(t, c, "GET", "/api/refund/matches?name=LUNCH&amount=30&today=2026-11-20", nil)); len(m) != 1 || m[0].ID != created.ID {
 		t.Errorf("refund matches: %+v", m)
 	}
-	if m := decodeJSON[[]store.Entry](t, e.do(t, c, "GET", "/api/refund/matches?name=lun&amount=31&today=2026-11-20", nil)); len(m) != 0 {
-		t.Errorf("refund matches, wrong amount: %+v", m)
+	if m := decodeJSON[[]store.Entry](t, e.do(t, c, "GET", "/api/refund/matches?name=lun&amount=30&today=2026-11-20", nil)); len(m) != 0 {
+		t.Errorf("refund matches, part of the name: %+v", m)
 	}
 	if code := status(t, e.do(t, c, "GET", "/api/refund/matches?amount=lots", nil)); code != 400 {
 		t.Errorf("refund matches, bad amount: %d", code)
 	}
-	gift := decodeJSON[store.RefundResult](t, e.do(t, c, "POST", "/api/refund", map[string]any{"name": "Gift card", "amount": 50, "today": "2026-11-20"}))
-	if gift.Added == nil || gift.Added.Amount != -50 || gift.Added.Date != "2026-11-20" {
+	gift := decodeJSON[store.RefundResult](t, e.do(t, c, "POST", "/api/refund", map[string]any{"name": "Gift card", "amount": 50, "type": "Shopping", "card": "Visa", "date": "2026-11-19", "today": "2026-11-20"}))
+	if gift.Added == nil || gift.Added.Amount != -50 || gift.Added.Date != "2026-11-19" || gift.Added.Type != "Shopping" || gift.Added.Card != "Visa" {
 		t.Errorf("refund, added: %+v", gift)
 	}
 	if code := status(t, e.do(t, c, "POST", "/api/refund", map[string]any{"id": gift.Added.ID})); code != 400 {

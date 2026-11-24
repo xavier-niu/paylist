@@ -114,9 +114,11 @@ type mcpMonthsOut struct {
 
 type mcpRefundIn struct {
 	ID     int64    `json:"id,omitempty" jsonschema:"a purchase's id (from list_entries, or from the matches of an earlier call), to refund that one"`
-	Name   string   `json:"name,omitempty" jsonschema:"what was refunded, or part of its name"`
+	Name   string   `json:"name,omitempty" jsonschema:"the purchase's name, as entered (case doesn't matter)"`
 	Amount *float64 `json:"amount,omitempty" jsonschema:"how much came back"`
-	Date   string   `json:"date,omitempty" jsonschema:"YYYY-MM-DD, for a refund that has to be added because no purchase matches; today when left out"`
+	Type   string   `json:"type,omitempty" jsonschema:"the type to record the refund under if no purchase matches"`
+	Card   string   `json:"card,omitempty" jsonschema:"the card the money came back to, if no purchase matches"`
+	Date   string   `json:"date,omitempty" jsonschema:"YYYY-MM-DD, the refund's date if no purchase matches; today when left out"`
 }
 
 type mcpProfileOut struct {
@@ -348,17 +350,17 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "refund",
-		Description: "Record a refund the way the ledger's Refund button does. Give the purchase's id, or its name and/or amount: " +
-			"a purchase from the last 120 days that matches (the name contains it, the amount is the same) is deleted and returned as refunded; " +
-			"if several match, nothing changes and they come back as matches, so call again with the right id (ask the user if unsure); " +
-			"if none match, the refund is added as a negative amount (this needs the amount) and returned as added.",
+		Description: "Record a refund the way the ledger's Refund form does. Give the purchase's id, or its name and amount " +
+			"(with the type, card and date, in case nothing matches): a purchase from the last 120 days with the same name and amount " +
+			"is deleted and returned as refunded; if several match, nothing changes and they come back as matches, so call again with " +
+			"the right id (ask the user if unsure); if none match, the refund is added as a negative amount and returned as added.",
 		Annotations: &mcp.ToolAnnotations{Title: "Refund", DestructiveHint: &yes, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpRefundIn) (*mcp.CallToolResult, store.RefundResult, error) {
 		u, err := caller(req)
 		if err != nil {
 			return nil, store.RefundResult{}, err
 		}
-		res, err := st.Refund(ctx, u.ID, store.RefundInput{ID: in.ID, Name: in.Name, Amount: in.Amount, Date: in.Date}, time.Now())
+		res, err := st.Refund(ctx, u.ID, store.RefundInput{ID: in.ID, Name: in.Name, Amount: in.Amount, Type: in.Type, Card: in.Card, Date: in.Date}, time.Now())
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, store.RefundResult{}, fmt.Errorf("there is no entry %d", in.ID)
 		}

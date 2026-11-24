@@ -130,10 +130,7 @@ export const ZH: Record<string, string> = {
   "Refunded: deleted {name}.": "已退款：删除了“{name}”。",
   "Added a refund of {amount}.": "已添加退款 {amount}。",
   "A matching purchase is deleted; otherwise the refund is added as a negative amount.": "匹配到的消费会被删除；没有匹配时，退款记为一笔负数金额。",
-  "What came back?": "退了什么？",
-  "What was refunded": "退款内容",
   "Matching purchases": "匹配的消费",
-  "No purchase matches.": "没有匹配的消费。",
   "Delete purchase": "删除消费",
   "Add refund": "添加退款",
 

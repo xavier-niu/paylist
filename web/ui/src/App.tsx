@@ -3,7 +3,6 @@ import { BotIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon, NotebookTextIcon, P
 import { toast } from "sonner"
 
 import { EntryDialog } from "@/components/entry-dialog"
-import { RefundDialog } from "@/components/refund-dialog"
 import { Logo, Wordmark } from "@/components/logo"
 import {
   DropdownMenu,
@@ -344,7 +343,7 @@ export function App() {
         </div>
       </div>
       <EntryDialog open={form.open} entry={form.entry} onOpenChange={(open) => setForm((f) => ({ ...f, open }))} />
-      <RefundDialog open={refunding} onOpenChange={setRefunding} />
+      <EntryDialog refund open={refunding} onOpenChange={setRefunding} />
       <Toaster position="bottom-center" />
     </AppContext.Provider>
   )

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
-import { CalendarIcon, CheckIcon, ChevronDownCircleIcon, HashIcon, Trash2Icon } from "lucide-react"
+import { CalendarIcon, CheckIcon, ChevronDownCircleIcon, HashIcon, Trash2Icon, Undo2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { OptionSelect, Tag } from "@/components/option-select"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
-import { api, currencySymbol, money, monthLabel, today, type Entry, type Suggestion } from "@/lib/api"
+import { api, currencySymbol, dateLabel, money, monthLabel, today, type Entry, type Suggestion } from "@/lib/api"
 import { optionColor, useApp } from "@/lib/state"
 import { cn } from "@/lib/utils"
 import { t } from "@/lib/i18n"
@@ -24,17 +24,21 @@ export function parseAmount(s: string): number {
 
 /**
  * The form for one entry: new ones (the New button, or N), added one after
- * another with names used before suggested as they're typed; or one from the
- * table to change or delete (tapping a line on a phone).
+ * another with names used before suggested as they're typed; one from the
+ * table to change or delete (tapping a line on a phone); or a refund (R),
+ * filled in the same way, which deletes the purchase with the same name and
+ * amount, or with none, is added as a negative amount.
  */
 export function EntryDialog({
   open,
   onOpenChange,
   entry,
+  refund = false,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
   entry?: Entry | null
+  refund?: boolean
 }) {
   const { options, user, reloadOptions, bumpTable } = useApp()
   const [name, setName] = useState("")
@@ -52,12 +56,16 @@ export function EntryDialog({
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [suggesting, setSuggesting] = useState(false) // the list is wanted: typing in the name
   const [active, setActive] = useState(-1)
+  // A refund: the purchases with this name and amount, for the text they're for; the one picked is deleted.
+  const [found, setFound] = useState<{ key: string; matches: Entry[] } | null>(null)
+  const [pickedMatch, setPickedMatch] = useState(0)
 
   useEffect(() => {
     if (!open) return
     setConfirmDelete(false)
     setAdded(null)
     setSuggesting(false)
+    setFound(null)
     if (entry) {
       setName(entry.name)
       setAmount(entry.amount.toFixed(2))
@@ -131,14 +139,70 @@ export function EntryDialog({
   }
 
   const n = parseAmount(amount)
-  const ready = name.trim() !== "" && Number.isFinite(n)
+  // A refund needs everything: the name and amount to match, the rest to record it if nothing does.
+  const ready = refund
+    ? name.trim() !== "" && Number.isFinite(n) && n !== 0 && type !== "" && card !== "" && date !== ""
+    : name.trim() !== "" && Number.isFinite(n)
+
+  const matchKey = `${name.trim().toLowerCase()}|${Number.isFinite(n) ? Math.abs(n) : ""}`
+  useEffect(() => {
+    if (!open || !refund || !name.trim() || !Number.isFinite(n) || n === 0) return
+    let live = true
+    const timer = setTimeout(() => {
+      api
+        .refundMatches(name.trim(), Math.abs(n))
+        .then((matches) => {
+          if (!live) return
+          setFound({ key: matchKey, matches })
+          setPickedMatch(0)
+        })
+        .catch((e) => toast.error((e as Error).message))
+    }, 150)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, refund, matchKey])
+  const matchesReady = found?.key === matchKey
+  const matches = matchesReady ? found.matches : []
+  const picked = matches[Math.min(pickedMatch, matches.length - 1)]
+
+  const applyRefund = async () => {
+    const res = await api.refund(picked ? { id: picked.id } : { name: name.trim(), amount: Math.abs(n), type, card, date })
+    if (res.matches) {
+      // Something changed in the meantime: show what matches now.
+      setFound({ key: matchKey, matches: res.matches })
+      return
+    }
+    if (res.refunded) {
+      const { name, type, amount, date, card } = res.refunded
+      toast.success(t("Refunded: deleted {name}.", { name }), {
+        action: {
+          label: t("Undo"),
+          onClick: () => {
+            api.createEntry({ name, type, amount, date, card }).then(bumpTable, (err) => toast.error((err as Error).message))
+          },
+        },
+      })
+    } else if (res.added) {
+      toast.success(t("Added a refund of {amount}.", { amount: money(Math.abs(res.added.amount), user.prefs.currency) }))
+    }
+    bumpTable()
+    void reloadOptions()
+    onOpenChange(false)
+  }
 
   // Adding keeps the form open for the next entry (same date and card); saving a change closes it.
   const save = async (e: FormEvent) => {
     e.preventDefault()
-    if (!ready || busy) return
+    if (!ready || busy || (refund && !matchesReady)) return
     setBusy(true)
     try {
+      if (refund) {
+        await applyRefund()
+        return
+      }
       const fields = { name, amount: n, type, card, date }
       const saved = entry ? await api.updateEntry(entry.id, fields) : await api.createEntry(fields)
       bumpTable()
@@ -197,7 +261,13 @@ export function EntryDialog({
       >
         <form onSubmit={save}>
           <div className="relative px-7 pt-7 pb-2">
-            <DialogTitle className="sr-only">{entry ? t("Edit entry") : t("New entry")}</DialogTitle>
+            {refund ? (
+              <DialogTitle className="mb-2 flex items-center gap-2 text-[13px] font-normal text-ink-2">
+                <Undo2Icon className="size-4" /> {t("Refund")}
+              </DialogTitle>
+            ) : (
+              <DialogTitle className="sr-only">{entry ? t("Edit entry") : t("New entry")}</DialogTitle>
+            )}
             <DialogDescription className="sr-only">{t("The entry's name, amount, type, card and date.")}</DialogDescription>
             <input
               ref={nameRef}
@@ -263,13 +333,17 @@ export function EntryDialog({
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
                   aria-label={t("Amount")}
-                  className={cn("h-[34px] w-full min-w-0 bg-transparent text-[14px] tabular-nums outline-none placeholder:text-muted-foreground", n < 0 && "text-red")}
+                  className={cn("h-[34px] w-full min-w-0 bg-transparent text-[14px] tabular-nums outline-none placeholder:text-muted-foreground", n < 0 && !refund && "text-red")}
                 />
               </span>
             </div>
             <div className={row}>
               <span className={name_}><ChevronDownCircleIcon /> {t("Type")}</span>
               <OptionSelect kind="type" label={t("Type")} placeholder={t("Empty")} value={type} options={options.types} onChange={setType} className="rounded-md hover:bg-wash" />
+            </div>
+            <div className={row}>
+              <span className={name_}><ChevronDownCircleIcon /> {t("Card")}</span>
+              <OptionSelect kind="card" label={t("Card")} placeholder={t("Empty")} value={card} options={options.cards} onChange={setCard} className="rounded-md hover:bg-wash" />
             </div>
             <div className={row}>
               <span className={name_}><CalendarIcon /> {t("Date")}</span>
@@ -282,10 +356,26 @@ export function EntryDialog({
                 )}
               </span>
             </div>
-            <div className={row}>
-              <span className={name_}><ChevronDownCircleIcon /> {t("Card")}</span>
-              <OptionSelect kind="card" label={t("Card")} placeholder={t("Empty")} value={card} options={options.cards} onChange={setCard} className="rounded-md hover:bg-wash" />
-            </div>
+            {refund && matches.length > 0 && (
+              <ul role="listbox" aria-label={t("Matching purchases")} className="mt-3 grid gap-0.5">
+                {matches.map((m, i) => (
+                  <li key={m.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={m === picked}
+                      onClick={() => setPickedMatch(i)}
+                      className={cn("flex h-9 w-full items-center gap-3 rounded-[10px] px-2.5 text-left text-[13.5px]", m === picked ? "bg-red-wash" : "hover:bg-wash")}
+                    >
+                      <span className={cn("min-w-0 flex-1 truncate", m === picked && "font-medium text-red line-through decoration-1")}>{m.name}</span>
+                      <span className="text-[12.5px] text-ink-2 tabular-nums">{dateLabel(m.date, { month: "short", day: "numeric" })}</span>
+                      {m.card && <span className="max-w-28 truncate text-[12.5px] text-ink-2">{m.card}</span>}
+                      <span className={cn("w-24 text-right tabular-nums", m === picked && "text-red")}>{money(m.amount, user.prefs.currency)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5 border-t border-rule px-5 py-3.5">
             {entry ? (
@@ -306,9 +396,9 @@ export function EntryDialog({
             <button type="button" className="btn ghost" onClick={() => onOpenChange(false)}>
               {entry || !added ? t("Cancel") : t("Done")}
             </button>
-            <button type="submit" className="btn" disabled={!ready || busy}>
+            <button type="submit" className={cn("btn", refund && picked && "danger")} disabled={!ready || busy || (refund && !matchesReady)}>
               {busy && <Spinner className="size-3.5" />}
-              {entry ? t("Save") : t("Add")}
+              {refund ? (picked ? t("Delete purchase") : t("Add refund")) : entry ? t("Save") : t("Add")}
             </button>
           </div>
         </form>

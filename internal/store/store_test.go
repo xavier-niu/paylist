@@ -237,6 +237,7 @@ func TestRefund(t *testing.T) {
 	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{
 		entry("Coffee", "Food", 18, "2026-11-20", "Cash"),
 		entry("Coffee", "Food", 19.77, "2026-11-02", "Cash"),
+		entry("Iced coffee", "Food", 19.77, "2026-11-03", "Cash"),
 		entry("Headphones", "Shopping", 299, "2026-10-15", "Credit card"),
 		entry("Old coat", "Shopping", 500, "2026-05-01", ""), // too long ago
 		entry("Coffee", "", -5, "2026-11-21", ""),            // a refund, never a match
@@ -245,37 +246,36 @@ func TestRefund(t *testing.T) {
 	}
 	f := func(v float64) *float64 { return &v }
 
-	// Name and amount: one match, deleted.
-	r, err := st.Refund(ctx, u.ID, RefundInput{Name: "coffee", Amount: f(19.77)}, today)
-	if err != nil || r.Refunded == nil || r.Refunded.Amount != 19.77 || r.Added != nil {
+	// The same name (ignoring case) and amount: deleted. "Iced coffee" isn't "coffee".
+	r, err := st.Refund(ctx, u.ID, RefundInput{Name: " coffee ", Amount: f(19.77)}, today)
+	if err != nil || r.Refunded == nil || r.Refunded.Name != "Coffee" || r.Refunded.Date != "2026-11-02" || r.Added != nil {
 		t.Fatalf("one match: %+v %v", r, err)
 	}
-	// The amount alone works too; the sign doesn't matter.
-	if r, err := st.Refund(ctx, u.ID, RefundInput{Amount: f(-299)}, today); err != nil || r.Refunded == nil || r.Refunded.Name != "Headphones" {
-		t.Fatalf("amount only: %+v %v", r, err)
+	// The sign of the amount doesn't matter.
+	if r, err := st.Refund(ctx, u.ID, RefundInput{Name: "Headphones", Amount: f(-299)}, today); err != nil || r.Refunded == nil {
+		t.Fatalf("negative amount: %+v %v", r, err)
 	}
-	// Several matches: nothing changes, they come back newest first.
-	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{entry("Iced coffee", "Food", 25, "2026-11-22", "")}); err != nil {
+	// Several matches: nothing changes, they come back newest first; then one by id.
+	if _, err := st.CreateEntries(ctx, u.ID, []EntryInput{entry("Coffee", "Food", 18, "2026-11-22", "")}); err != nil {
 		t.Fatal(err)
 	}
-	r, err = st.Refund(ctx, u.ID, RefundInput{Name: "coffee"}, today)
-	if err != nil || len(r.Matches) != 2 || r.Matches[0].Name != "Iced coffee" || r.Refunded != nil {
+	r, err = st.Refund(ctx, u.ID, RefundInput{Name: "Coffee", Amount: f(18)}, today)
+	if err != nil || len(r.Matches) != 2 || r.Matches[0].Date != "2026-11-22" || r.Refunded != nil {
 		t.Fatalf("several: %+v %v", r, err)
 	}
-	// Then by id.
-	if r, err := st.Refund(ctx, u.ID, RefundInput{ID: r.Matches[1].ID}, today); err != nil || r.Refunded == nil || r.Refunded.Amount != 18 {
+	if r, err := st.Refund(ctx, u.ID, RefundInput{ID: r.Matches[1].ID}, today); err != nil || r.Refunded == nil || r.Refunded.Date != "2026-11-20" {
 		t.Fatalf("by id: %+v %v", r, err)
 	}
-	// No match: added as a negative amount today, or an error without an amount.
-	r, err = st.Refund(ctx, u.ID, RefundInput{Name: "Old coat", Amount: f(500)}, today)
-	if err != nil || r.Added == nil || r.Added.Amount != -500 || r.Added.Date != "2026-11-24" || r.Added.Name != "Old coat" {
+	// No match: added as a negative amount, with its own type, card and date.
+	r, err = st.Refund(ctx, u.ID, RefundInput{Name: "Old coat", Amount: f(500), Type: "Shopping", Card: "Cash", Date: "2026-11-23"}, today)
+	if err != nil || r.Added == nil || r.Added.Amount != -500 || r.Added.Date != "2026-11-23" || r.Added.Type != "Shopping" || r.Added.Card != "Cash" {
 		t.Fatalf("no match: %+v %v", r, err)
 	}
-	if _, err := st.Refund(ctx, u.ID, RefundInput{Name: "nothing like it"}, today); err == nil {
-		t.Error("a refund with no match and no amount was accepted")
-	}
-	if _, err := st.Refund(ctx, u.ID, RefundInput{}, today); err == nil {
-		t.Error("an empty refund was accepted")
+	// Both the name and the amount are needed.
+	for _, in := range []RefundInput{{Name: "Coffee"}, {Amount: f(18)}, {}} {
+		if _, err := st.Refund(ctx, u.ID, in, today); err == nil {
+			t.Errorf("accepted %+v", in)
+		}
 	}
 	// A refund entry can't be refunded.
 	if _, err := st.Refund(ctx, u.ID, RefundInput{ID: r.Added.ID}, today); err == nil {
