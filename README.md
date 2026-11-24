@@ -43,7 +43,11 @@ One month as a table, edited in place, like a spreadsheet.
 Chat with an assistant that works on your ledger:
 
 > add lunch 35 and a metro ride 4.5 today, paid by card
-> how much did I spend on food this month?
+>
+> add a coffee
+>
+> I got 299 back for the headphones
+>
 > compare this month with last month, type by type
 
 - **Bring your own key**: Anthropic (Claude), OpenAI, DeepSeek, OpenRouter, Qwen, Moonshot, Ollama, or any other OpenAI-compatible API with tool calling. Keys are stored encrypted on your server and never sent back to the browser.
@@ -61,13 +65,19 @@ claude mcp add --transport http paylist https://pay.example.com/mcp \
 
 | Tool | Does |
 |---|---|
+| `get_profile` | The user's currency and language, and today's date |
 | `list_entries` | Entries of a month or a date range, optionally of one type or card, or with names containing some text; with their count and total |
 | `add_entries` | Add entries, all or none. The date defaults to today; a new type or card becomes an option |
 | `update_entry` | Change the fields given |
 | `delete_entries` | Delete entries by id |
+| `refund` | Record a refund the way the ledger's Refund button does: a purchase from the last 120 days that matches the name and/or amount is deleted; with several matches, they come back to pick from; with none, the refund is added as a negative amount |
+| `suggest_entries` | Names used before that contain some text, with how each was last entered (type, card, amount), to fill in what the user leaves out |
 | `list_options` | The types and cards, with their colors and how many entries use each |
 | `manage_option` | Create, rename, recolor or delete a type or card; renaming carries through to every entry |
-| `get_stats` | A month's total, change from the month before, daily totals, totals by type and by card, and the months before it |
+| `get_stats` | A month's total, change from the same days of the month before, daily totals, totals by type and by card, and the months before it |
+| `list_months` | Every month with entries, with its total and count |
+
+Everything you can do with your ledger in Paylist, an agent can do through these tools. Account settings, members, model keys and tokens stay in the app.
 
 A token reaches only its owner's ledger, and can be revoked at any time.
 
