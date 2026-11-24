@@ -4,6 +4,7 @@ import { toast } from "sonner"
 
 import { parseAmount } from "@/components/entry-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { Loading, Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { api, dateLabel, money, today, type Entry } from "@/lib/api"
 import { t } from "@/lib/i18n"
@@ -152,10 +153,16 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
           <div className="min-h-[148px] px-5 pt-4 pb-4">
             {recent === null ? (
-              <Spinner className="mx-auto mt-10 text-muted-foreground" />
-            ) : empty ? (
-              <p className="px-2 pt-1 text-[13px] text-ink-2">{t("Type a name, an amount, or both. A matching purchase from the last four months is deleted; with no match, the refund is added as a negative amount.")}</p>
-            ) : picked ? (
+              <Loading className="grid gap-3.5 px-2.5 pt-3">
+                {[52, 36, 60].map((w, i) => (
+                  <span key={i} className="flex items-center gap-3">
+                    <Skeleton style={{ width: `${w}%` }} />
+                    <Skeleton className="ml-auto w-12" />
+                    <Skeleton className="w-16" />
+                  </span>
+                ))}
+              </Loading>
+            ) : empty ? null : picked ? (
               <>
                 <div className="px-2 pb-1.5 text-[12px] text-ink-2">{matches.length === 1 ? t("Matches this purchase. It will be deleted.") : t("Matches these purchases. The one picked will be deleted.")}</div>
                 <ul role="listbox" aria-label={t("Matching purchases")} className="grid gap-0.5">

@@ -13,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Spinner } from "@/components/ui/spinner"
 import { Toaster } from "@/components/ui/sonner"
 import { api, money, monthLabel, plainAmount, setSignedOutHandler, thisMonth, type Config, type Entry, type GroupTotal, type ModelSettings, type MonthTotal, type Options, type User } from "@/lib/api"
 import { AppContext, applyTheme, type AppState } from "@/lib/state"
@@ -151,8 +150,11 @@ export function App() {
 
   if (booting) {
     return (
-      <div className="grid min-h-dvh place-items-center text-muted-foreground">
-        <Spinner />
+      // The mark, breathing, where the page will be; shown after a beat so a quick start doesn't flash it.
+      <div className="grid min-h-dvh place-items-center" role="status" aria-label={t("Loading")}>
+        <div className="loading-in">
+          <Logo className="breathe size-10" />
+        </div>
       </div>
     )
   }

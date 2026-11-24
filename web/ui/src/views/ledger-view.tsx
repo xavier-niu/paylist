@@ -8,6 +8,7 @@ import { MonthHeading } from "@/components/month-picker"
 import { OptionSelect, Tag } from "@/components/option-select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Loading, Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { api, compareLabel, currencySymbol, dateLabel, money, monthLabel, monthName, plainAmount, shiftMonth, thisMonth, today, type Entry, type EntryInput, type Stats } from "@/lib/api"
 import { Money } from "@/lib/money"
@@ -243,7 +244,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
         <dl className="flex items-stretch gap-6">
           {/* MTD while the month is still running; a past month shows its whole total. */}
           <HeaderFigure label={isThisMonth ? t("MTD") : t("Total")} title={isThisMonth ? t("Month to date") : undefined}>
-            {stats ? money(stats.total, currency) : "—"}
+            {stats ? money(stats.total, currency) : <Skeleton className="loading-in my-[3px] h-4 w-28" />}
           </HeaderFigure>
           <div aria-hidden="true" className="w-px bg-rule" />
           <HeaderFigure
@@ -257,7 +258,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
             }
           >
             {!stats ? (
-              "—"
+              <Skeleton className="loading-in my-[3px] h-4 w-36" />
             ) : stats.prev_to_date ? (
               <>
                 {stats.to_date >= stats.prev_to_date ? "+" : "−"}
@@ -392,14 +393,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
             </tr>
           </thead>
           <tbody>
-            {entries === null && (
-              <tr>
-                <td />
-                <td colSpan={5} className="py-10 text-center text-muted-foreground">
-                  <Spinner className="mx-auto" />
-                </td>
-              </tr>
-            )}
+            {entries === null && <SkeletonRows />}
             {shown.map((e, i) => (
               <tr key={e.id} className="row" data-selected={selected.has(e.id)}>
                 <td>
@@ -481,7 +475,19 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
 
       {/* Phones: a list; tap an entry to change it. */}
       <div className="card mt-3 px-4 pb-1 md:hidden">
-        {entries === null && <Spinner className="mx-auto my-10" />}
+        {entries === null && (
+          <Loading className="grid gap-4 py-4">
+            {[62, 45, 70, 52, 38].map((w, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <span className="grid flex-1 gap-2">
+                  <Skeleton style={{ width: `${w}%` }} />
+                  <Skeleton className="h-3 w-24" />
+                </span>
+                <Skeleton className="w-16" />
+              </div>
+            ))}
+          </Loading>
+        )}
         {entries !== null && shown.length === 0 && (
           <p className="py-6 text-[13.5px] text-muted-foreground">{filtered ? t("No entries match.") : t("Nothing for {month} yet. Tap New to add one.", { month: monthLabel(month) })}</p>
         )}
@@ -511,6 +517,41 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
       </div>
       {confirmEl}
     </div>
+  )
+}
+
+/** Rows in the table's shape while the month loads: a name, a type, an amount, a date, a card. */
+function SkeletonRows() {
+  const names = [48, 30, 62, 36, 54, 28, 44, 34]
+  return (
+    <>
+      {names.map((w, i) => (
+        <tr key={i} className="loading-in" aria-hidden={i > 0 || undefined}>
+          <td>{i === 0 && <span className="sr-only" role="status">{t("Loading")}</span>}</td>
+          <td className="px-3">
+            <Skeleton style={{ width: `${w}%`, animationDelay: `${i * 60}ms` }} />
+          </td>
+          <td className="px-3">
+            <span className="flex items-center gap-2">
+              <Skeleton className="size-2 rounded-full" style={{ animationDelay: `${i * 60}ms` }} />
+              <Skeleton className="w-16" style={{ animationDelay: `${i * 60}ms` }} />
+            </span>
+          </td>
+          <td className="px-3">
+            <Skeleton className="ml-auto w-14" style={{ animationDelay: `${i * 60}ms` }} />
+          </td>
+          <td className="px-3">
+            <Skeleton className="w-16" style={{ animationDelay: `${i * 60}ms` }} />
+          </td>
+          <td className="px-3">
+            <span className="flex items-center gap-2">
+              <Skeleton className="size-2 rounded-full" style={{ animationDelay: `${i * 60}ms` }} />
+              <Skeleton className="w-20" style={{ animationDelay: `${i * 60}ms` }} />
+            </span>
+          </td>
+        </tr>
+      ))}
+    </>
   )
 }
 

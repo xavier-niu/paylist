@@ -82,6 +82,7 @@
   --red-wash: #feebec;
   --good: #218358;    /* less spending */
   --good-wash: #e6f6eb;
+  --shimmer: #f8f8f8;   /* the light that sweeps across loading placeholders */
 
   /* Charts: ink on paper */
   --viz-series: #202020;
@@ -130,6 +131,7 @@
   --red-wash: #3b1219;
   --good: #3dd68c;
   --good-wash: #132d21;
+  --shimmer: #2c2c2c;
 
   --viz-series: #eeeeee;
   --viz-soft: #3a3a3a;
@@ -307,9 +309,28 @@
   .prose-chat blockquote { border-left: 2px solid var(--rule-2); padding-left: 12px; color: var(--ink-2); }
 
   .caret::after { content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--ink); opacity: .5; animation: blink 1s steps(2) infinite; }
+
+  /* ------------------------------------------------------------ loading */
+  /* A placeholder in the shape of what's coming, with a light sweeping across it. */
+  .skeleton {
+    display: block; border-radius: 6px;
+    background: linear-gradient(100deg, var(--wash) 30%, var(--shimmer) 50%, var(--wash) 70%) 0 0 / 300% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+  /* Loading states appear after a beat, so a quick load doesn't flash them. */
+  .loading-in { animation: loading-in .3s ease-out .15s both; }
+  /* The mark breathing while the app starts. */
+  .breathe { animation: breathe 1.8s ease-in-out infinite; transform-origin: center; }
+  /* Content being replaced (another month loading) steps back. */
+  .stale { opacity: .45; pointer-events: none; transition: opacity .2s .1s; }
 }
 
 @keyframes blink { 50% { opacity: 0; } }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes loading-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes breathe { 0%, 100% { opacity: .5; transform: scale(.94); } 50% { opacity: 1; transform: scale(1); } }
+@keyframes spin-arc { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .caret::after { animation: none; }
+  .caret::after, .skeleton, .breathe { animation: none; }
+  .skeleton { background: var(--wash); }
 }

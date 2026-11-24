@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { useConfirm } from "@/components/confirm"
 import { PageHeader } from "@/components/month-picker"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Loading, Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { api, ApiError, type ChatMessage, type ChatSummary, type ToolCall, type ToolResult } from "@/lib/api"
 import { renderMarkdown } from "@/lib/markdown"
@@ -290,7 +291,18 @@ export function AgentView({ chatId }: { chatId: string }) {
         className="min-h-0 flex-1 overflow-y-auto"
       >
         <div className="mx-auto grid max-w-[760px] grid-cols-[minmax(0,1fr)] gap-4 py-6">
-          {loading && <Spinner className="mx-auto my-16" />}
+          {loading && (
+            // A conversation's shape: a question on the right, an answer's lines on the left.
+            <Loading className="grid gap-4">
+              <Skeleton className="ml-auto h-10 w-2/5 rounded-[18px]" />
+              <span className="grid gap-2.5">
+                <Skeleton className="w-4/5" />
+                <Skeleton className="w-3/5" />
+                <Skeleton className="w-2/3" />
+              </span>
+              <Skeleton className="h-7 w-44 rounded-full" />
+            </Loading>
+          )}
           {empty && (
             <div className="grid justify-items-center pt-[12vh] text-center">
               <span className="grid size-12 place-items-center rounded-[14px] bg-sheet shadow-[inset_0_0_0_1px_var(--rule-2)]">
