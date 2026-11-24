@@ -47,6 +47,13 @@ export interface Entry {
   updated_at: string
 }
 
+/** What a refund did: deleted a purchase, added a negative amount, or found several to pick from. */
+export interface RefundResult {
+  refunded?: Entry
+  added?: Entry
+  matches?: Entry[]
+}
+
 /** A name used before, with how it was last entered (the New entry form's suggestions). */
 export interface Suggestion {
   name: string
@@ -208,10 +215,13 @@ export const api = {
   deleteUser: (id: number) => request<{ ok: boolean }>("DELETE", `/api/admin/users/${id}`),
 
   entries: (month: string) => request<{ month: string; entries: Entry[] }>("GET", "/api/entries" + q({ month })),
+  /** The purchases a refund would undo (see store.RefundMatches), newest first. */
+  refundMatches: (name: string, amount: number | null) =>
+    request<Entry[]>("GET", "/api/refund/matches" + q({ name, amount: amount ?? undefined, today: today() })),
+  /** Applies a refund: a picked purchase by id, or a name and/or amount. */
+  refund: (body: { id?: number; name?: string; amount?: number }) => request<RefundResult>("POST", "/api/refund", { ...body, today: today() }),
   /** Names used before that hold the text, one per name with how it was last entered. */
   suggest: (text: string) => request<Suggestion[]>("GET", "/api/entries/suggest" + q({ q: text })),
-  /** Entries dated from..to (YYYY-MM-DD, both included), oldest first. */
-  entriesBetween: (from: string, to: string) => request<{ entries: Entry[] }>("GET", "/api/entries" + q({ from, to })),
   createEntry: (e: EntryInput) => request<Entry>("POST", "/api/entries", e),
   updateEntry: (id: number, e: EntryInput) => request<Entry>("PUT", `/api/entries/${id}`, e),
   deleteEntries: (ids: number[]) => request<{ deleted: number }>("POST", "/api/entries/delete", { ids }),

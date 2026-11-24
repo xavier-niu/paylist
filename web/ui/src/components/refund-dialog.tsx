@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
 import { Undo2Icon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -6,15 +6,10 @@ import { parseAmount } from "@/components/entry-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Loading, Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
-import { api, dateLabel, money, today, type Entry } from "@/lib/api"
+import { api, dateLabel, money, type Entry } from "@/lib/api"
 import { t } from "@/lib/i18n"
 import { useApp } from "@/lib/state"
 import { cn } from "@/lib/utils"
-
-/** How far back a refund looks for the purchase it undoes. */
-const LOOKBACK_DAYS = 120
-/** How many matches the dialog lists to pick from. */
-const MAX_MATCHES = 5
 
 /** "coffee 19.77" → { name: "coffee", amount: 19.77 }; either can be missing. */
 export function parseRefund(text: string): { name: string; amount: number | null } {
@@ -28,26 +23,18 @@ export function parseRefund(text: string): { name: string; amount: number | null
   return { name, amount: Number.isFinite(n) && n > 0 ? n : null }
 }
 
-/** Entries that fit everything given (the name holds the text, the amount is the same to the cent), newest first. */
-export function matchRefund(entries: Entry[], name: string, amount: number | null): Entry[] {
-  if (!name && amount === null) return []
-  const q = name.toLowerCase()
-  return entries
-    .filter((e) => e.amount > 0)
-    .filter((e) => (!q || e.name.toLowerCase().includes(q)) && (amount === null || Math.round(e.amount * 100) === Math.round(amount * 100)))
-    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)
-}
-
 /**
- * A refund (R): type what came back. If it matches a purchase, that entry is
- * deleted (one of them, the newest unless another is picked); if nothing
- * matches, the refund is added as a negative amount today.
+ * A refund (R): type what came back. The server decides, by the same rule as
+ * the MCP refund tool: a matching purchase from the last four months is
+ * deleted (the newest unless another is picked); with no match, the refund is
+ * added as a negative amount today.
  */
 export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { user, bumpTable, reloadOptions } = useApp()
   const currency = user.prefs.currency
   const [text, setText] = useState("")
-  const [recent, setRecent] = useState<Entry[] | null>(null)
+  // The purchases matching what's typed, and the text they're for (null until the first answer).
+  const [found, setFound] = useState<{ key: string; matches: Entry[] } | null>(null)
   const [active, setActive] = useState(0)
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -56,22 +43,37 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     if (!open) return
     setText("")
     setActive(0)
-    setRecent(null)
-    const from = new Date()
-    from.setDate(from.getDate() - LOOKBACK_DAYS)
-    api
-      .entriesBetween(today(from), today())
-      .then((r) => setRecent(r.entries))
-      .catch((e) => {
-        toast.error((e as Error).message)
-        setRecent([])
-      })
+    setFound(null)
   }, [open])
 
   const { name, amount } = parseRefund(text)
-  const matches = useMemo(() => (recent ? matchRefund(recent, name, amount).slice(0, MAX_MATCHES) : []), [recent, name, amount])
+  const empty = !name && amount === null
+  const key = `${name.toLowerCase()}|${amount ?? ""}`
+  useEffect(() => {
+    if (!open || empty) return
+    let live = true
+    const timer = setTimeout(() => {
+      api
+        .refundMatches(name, amount)
+        .then((matches) => {
+          if (!live) return
+          setFound({ key, matches })
+          setActive(0)
+        })
+        .catch((e) => toast.error((e as Error).message))
+    }, 120)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, key])
+
+  // While the answer for this text is on its way, the last one stays on screen, but nothing can be done with it.
+  const ready = found?.key === key
+  const matches = found?.matches ?? []
   const picked = matches[Math.min(active, matches.length - 1)]
-  const canAdd = !picked && amount !== null && recent !== null
+  const canAdd = ready && !picked && amount !== null
 
   const done = () => {
     bumpTable()
@@ -81,12 +83,17 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault()
-    if (busy || (!picked && !canAdd)) return
+    if (busy || !ready || (!picked && !canAdd)) return
     setBusy(true)
     try {
-      if (picked) {
-        await api.deleteEntries([picked.id])
-        const { name, type, amount, date, card } = picked
+      const res = await api.refund(picked ? { id: picked.id } : { name, amount: amount ?? undefined })
+      if (res.matches) {
+        // Something changed in the meantime: show what matches now.
+        setFound({ key, matches: res.matches })
+        return
+      }
+      if (res.refunded) {
+        const { name, type, amount, date, card } = res.refunded
         toast.success(t("Refunded: deleted {name}.", { name }), {
           action: {
             label: t("Undo"),
@@ -95,9 +102,8 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             },
           },
         })
-      } else if (amount !== null) {
-        const added = await api.createEntry({ name: name || t("Refund"), amount: -amount, date: today() })
-        toast.success(t("Added a refund of {amount}.", { amount: money(Math.abs(added.amount), currency) }))
+      } else if (res.added) {
+        toast.success(t("Added a refund of {amount}.", { amount: money(Math.abs(res.added.amount), currency) }))
       }
       done()
     } catch (err) {
@@ -117,7 +123,6 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     }
   }
 
-  const empty = !name && amount === null
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -152,7 +157,7 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </div>
 
           <div className="min-h-[148px] px-5 pt-4 pb-4">
-            {recent === null ? (
+            {empty ? null : found === null ? (
               <Loading className="grid gap-3.5 px-2.5 pt-3">
                 {[52, 36, 60].map((w, i) => (
                   <span key={i} className="flex items-center gap-3">
@@ -162,7 +167,7 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   </span>
                 ))}
               </Loading>
-            ) : empty ? null : picked ? (
+            ) : picked ? (
               <>
                 <ul role="listbox" aria-label={t("Matching purchases")} className="grid gap-0.5">
                   {matches.map((e, i) => (
@@ -204,7 +209,7 @@ export function RefundDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <button type="button" className="btn ghost" onClick={() => onOpenChange(false)}>
               {t("Cancel")}
             </button>
-            <button type="submit" className={cn("btn", picked && "danger")} disabled={busy || (!picked && !canAdd)}>
+            <button type="submit" className={cn("btn", picked && "danger")} disabled={busy || !ready || (!picked && !canAdd)}>
               {busy && <Spinner className="size-3.5" />}
               {picked ? t("Delete purchase") : t("Add refund")}
             </button>
