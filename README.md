@@ -65,7 +65,8 @@ claude mcp add --transport http paylist https://pay.example.com/mcp \
 
 | Tool | Does |
 |---|---|
-| `get_profile` | The user's currency and language, and today's date |
+| `list_ledgers` | The user's ledgers, their own and those shared with them, with their role in each. Every other tool takes an optional `ledger` (a name or an id); without it, the ledger last open in Paylist |
+| `get_profile` | A ledger's name and currency, the user's role in it and their language, and today's date |
 | `list_entries` | Entries of a month or a date range, optionally of one type or card, or with names containing some text; with their count and total |
 | `add_entries` | Add entries, all or none. The date defaults to today; a new type or card becomes an option |
 | `update_entry` | Change the fields given |
@@ -81,9 +82,11 @@ Everything you can do with your ledger in Paylist, an agent can do through these
 
 A token reaches only its owner's ledger, and can be revoked at any time.
 
-## For the household
+## Ledgers, shared
 
-One server holds everyone: each person has their own ledger, types, cards, model and key. The first person to open a new server becomes its admin and adds the others in **Settings → Members**.
+Everyone starts with a personal ledger and can make more, such as one for the household or a trip, each with its own types, cards and currency; the sidebar lists them and switches between them. A ledger's owner can share it, in **Settings → This ledger**, with other people on the server: an **editor** changes it as the owner does, a **viewer** only reads it. The agent and MCP work on the ledger that's open, or one named by its name.
+
+One server holds everyone, each with their own ledgers, model and key. The first person to open a new server becomes its admin and adds the others in **Settings → Accounts**.
 
 ## Get started
 
