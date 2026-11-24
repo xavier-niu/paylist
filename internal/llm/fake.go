@@ -65,6 +65,9 @@ func (fakeClient) Step(ctx context.Context, _ string, msgs []Message, tools []To
 		}
 		return say(b.String())
 	case "user":
+		if n := len(last.Attachments); n > 0 {
+			return say(fmt.Sprintf("I got %d file(s), but the demo model can't read files. Connect a real model in Settings and it will read them.", n))
+		}
 		if m := fakeAddRe.FindStringSubmatch(last.Text); m != nil {
 			amount, _ := strconv.ParseFloat(m[2], 64)
 			entry := map[string]any{"name": m[1], "amount": amount, "date": time.Now().Format("2006-01-02")}

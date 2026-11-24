@@ -120,7 +120,26 @@ func (c *anthropicClient) history(msgs []Message) ([]anthropic.MessageParam, err
 	for _, m := range msgs {
 		switch m.Role {
 		case "user":
-			add(anthropic.NewUserMessage(anthropic.NewTextBlock(m.Text)))
+			// Files first, then the question about them.
+			var blocks []anthropic.ContentBlockParamUnion
+			for _, a := range m.Attachments {
+				switch a.Kind() {
+				case "image":
+					blocks = append(blocks, anthropic.NewImageBlockBase64(a.Type, a.Data))
+				case "pdf":
+					doc := anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: a.Data})
+					doc.OfDocument.Title = anthropic.String(a.Name)
+					blocks = append(blocks, doc)
+				default:
+					doc := anthropic.NewDocumentBlock(anthropic.PlainTextSourceParam{Data: a.Text()})
+					doc.OfDocument.Title = anthropic.String(a.Name)
+					blocks = append(blocks, doc)
+				}
+			}
+			if m.Text != "" || len(blocks) == 0 {
+				blocks = append(blocks, anthropic.NewTextBlock(m.Text))
+			}
+			add(anthropic.NewUserMessage(blocks...))
 		case "tool":
 			blocks := make([]anthropic.ContentBlockParamUnion, 0, len(m.Results))
 			for _, r := range m.Results {

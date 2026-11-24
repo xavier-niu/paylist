@@ -47,19 +47,43 @@ type oaiToolCall struct {
 
 type oaiMessage struct {
 	Role       string        `json:"role"`
-	Content    *string       `json:"content"`
+	Content    any           `json:"content"` // a string, or for a user message with files, a list of parts
 	ToolCalls  []oaiToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string        `json:"tool_call_id,omitempty"`
 }
 
 func str(s string) *string { return &s }
 
+// oaiUserContent is a user message's content: its text, or with files, a list
+// of parts. Images go as image_url, PDFs as file (which not every
+// OpenAI-compatible API takes), and text files as text.
+func oaiUserContent(m Message) any {
+	if len(m.Attachments) == 0 {
+		return m.Text
+	}
+	parts := []map[string]any{}
+	for _, a := range m.Attachments {
+		switch a.Kind() {
+		case "image":
+			parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]any{"url": "data:" + a.Type + ";base64," + a.Data}})
+		case "pdf":
+			parts = append(parts, map[string]any{"type": "file", "file": map[string]any{"filename": a.Name, "file_data": "data:application/pdf;base64," + a.Data}})
+		default:
+			parts = append(parts, map[string]any{"type": "text", "text": "File " + a.Name + ":\n\n" + a.Text()})
+		}
+	}
+	if m.Text != "" {
+		parts = append(parts, map[string]any{"type": "text", "text": m.Text})
+	}
+	return parts
+}
+
 func (c *openAIClient) messages(system string, msgs []Message) []oaiMessage {
 	out := []oaiMessage{{Role: "system", Content: str(system)}}
 	for _, m := range msgs {
 		switch m.Role {
 		case "user":
-			out = append(out, oaiMessage{Role: "user", Content: str(m.Text)})
+			out = append(out, oaiMessage{Role: "user", Content: oaiUserContent(m)})
 		case "assistant":
 			om := oaiMessage{Role: "assistant"}
 			if m.Text != "" || len(m.ToolCalls) == 0 {

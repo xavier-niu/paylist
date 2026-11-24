@@ -148,7 +148,12 @@ func (s *Server) publicURL(r *http.Request) string {
 // ---------------------------------------------------------------- helpers
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	return decodeUpTo(w, r, v, maxBodyBytes)
+}
+
+// decodeUpTo is decode for a body of up to limit bytes.
+func decodeUpTo(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 		var mbe *http.MaxBytesError
 		if errors.As(err, &mbe) {

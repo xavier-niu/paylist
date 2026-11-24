@@ -1,5 +1,6 @@
 // The Paylist HTTP API. Every call sends the session cookie; errors throw
 // ApiError with the server's message.
+import type { Attachment } from "@/lib/attachments"
 import { lang, locale, t, type LangPref } from "@/lib/i18n"
 
 
@@ -131,6 +132,7 @@ export interface ToolResult {
 export interface ChatMessage {
   role: "user" | "assistant" | "tool"
   text?: string
+  attachments?: Attachment[]
   tool_calls?: ToolCall[]
   results?: ToolResult[]
 }
@@ -241,7 +243,7 @@ export const api = {
   deleteChat: (id: string) => request<{ ok: boolean }>("DELETE", `/api/chats/${id}`),
 
   /** Runs one agent turn, calling onEvent for each streamed event. */
-  async agentTurn(body: { chat_id?: string; message: string }, onEvent: (e: AgentEvent) => void, signal: AbortSignal) {
+  async agentTurn(body: { chat_id?: string; message: string; attachments?: Attachment[] }, onEvent: (e: AgentEvent) => void, signal: AbortSignal) {
     const res = await fetch("/api/agent/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

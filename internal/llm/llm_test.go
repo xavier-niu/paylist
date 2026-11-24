@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -81,6 +82,41 @@ func TestOpenAIMessages(t *testing.T) {
 	for _, want := range []string{`"role":"system"`, `"arguments":"{}"`, `"tool_call_id":"c1"`, `"content":"Error: bad"`, `"content":null`} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+}
+
+func TestAttachments(t *testing.T) {
+	b64 := func(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
+	msg := Message{Role: "user", Text: "add these", Attachments: []Attachment{
+		{Name: "receipt.png", Type: "image/png", Data: b64("png bytes")},
+		{Name: "statement.pdf", Type: "application/pdf", Data: b64("%PDF-1.7")},
+		{Name: "export.csv", Type: "text/csv", Data: b64("name,amount\nCoffee,18\n")},
+	}}
+
+	// Claude: an image, two documents (the CSV as text), then the question.
+	history, err := newAnthropic(Config{Kind: "anthropic", APIKey: "k"}).history([]Message{msg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(history[0])
+	got := string(b)
+	for _, want := range []string{`"type":"image"`, `"media_type":"image/png"`, `"application/pdf"`, `"title":"statement.pdf"`, `"media_type":"text/plain"`, `name,amount\nCoffee,18\n`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Claude: missing %s in %s", want, got)
+		}
+	}
+	if strings.Index(got, `"text":"add these"`) < strings.Index(got, `"type":"image"`) {
+		t.Errorf("Claude: the question should follow the files: %s", got)
+	}
+
+	// OpenAI-compatible: a list of parts.
+	msgs := (&openAIClient{cfg: Config{Model: "m"}}).messages("sys", []Message{msg, {Role: "user", Text: "plain"}})
+	b, _ = json.Marshal(msgs)
+	got = string(b)
+	for _, want := range []string{`"type":"image_url"`, `"url":"data:image/png;base64,`, `"type":"file"`, `"filename":"statement.pdf"`, `File export.csv:`, `"text":"add these"`, `"content":"plain"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("OpenAI: missing %s in %s", want, got)
 		}
 	}
 }

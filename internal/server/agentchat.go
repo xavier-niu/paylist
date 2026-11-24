@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +27,12 @@ import (
 const (
 	maxAgentMessageChars = 8000
 	maxChatHistory       = 400 // messages in one conversation
+
+	// Files sent with a message: receipts, screenshots, statements, exports.
+	maxAttachments    = 5
+	maxImageBytes     = 5 << 20  // what Claude takes for one image
+	maxFileBytes      = 10 << 20 // a PDF or a text file
+	maxAgentTurnBytes = 40 << 20 // the request, files included (base64 adds a third)
 )
 
 var chatIDRe = regexp.MustCompile(`^[a-f0-9]{8,64}$`)
@@ -65,7 +72,52 @@ func (s *Server) handleDeleteChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// handleAgentChat runs one turn: {chat_id?, message, today?} → NDJSON events:
+// attachmentTypes are the files the agent takes, by MIME type.
+var attachmentTypes = map[string]bool{
+	"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true,
+	"application/pdf": true,
+	"text/plain":      true, "text/csv": true, "text/tab-separated-values": true, "text/markdown": true, "application/json": true,
+}
+
+// checkAttachments vets the files sent with a message: what they are, how big,
+// and for text, that it is text.
+func checkAttachments(in []llm.Attachment) ([]llm.Attachment, error) {
+	if len(in) > maxAttachments {
+		return nil, fmt.Errorf("Send at most %d files at a time.", maxAttachments)
+	}
+	out := make([]llm.Attachment, 0, len(in))
+	for _, a := range in {
+		a.Name = strings.TrimSpace(a.Name)
+		if a.Name == "" {
+			a.Name = "file"
+		}
+		if utf8.RuneCountInString(a.Name) > 200 {
+			a.Name = string([]rune(a.Name)[:200])
+		}
+		a.Type = strings.ToLower(strings.TrimSpace(strings.SplitN(a.Type, ";", 2)[0]))
+		if !attachmentTypes[a.Type] {
+			return nil, fmt.Errorf("%s: the agent takes images (PNG, JPEG, GIF, WebP), PDFs, and text files (TXT, CSV, TSV, Markdown, JSON).", a.Name)
+		}
+		raw, err := base64.StdEncoding.DecodeString(a.Data)
+		if err != nil || len(raw) == 0 {
+			return nil, fmt.Errorf("%s: the file couldn't be read.", a.Name)
+		}
+		limit := maxFileBytes
+		if a.Kind() == "image" {
+			limit = maxImageBytes
+		}
+		if len(raw) > limit {
+			return nil, fmt.Errorf("%s is larger than %d MB.", a.Name, limit>>20)
+		}
+		if a.Kind() == "text" && !utf8.Valid(raw) {
+			return nil, fmt.Errorf("%s isn't a text file.", a.Name)
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// handleAgentChat runs one turn: {chat_id?, message, attachments?, today?} → NDJSON events:
 //
 //	{"type":"chat","id","title"}            the conversation (new or continued)
 //	{"type":"text","text"}                  a fragment of the reply
@@ -77,15 +129,21 @@ func (s *Server) handleDeleteChat(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r.Context())
 	var req struct {
-		ChatID  string `json:"chat_id"`
-		Message string `json:"message"`
-		Today   string `json:"today"`
+		ChatID      string           `json:"chat_id"`
+		Message     string           `json:"message"`
+		Attachments []llm.Attachment `json:"attachments"`
+		Today       string           `json:"today"`
 	}
-	if !decode(w, r, &req) {
+	if !decodeUpTo(w, r, &req, maxAgentTurnBytes) {
 		return
 	}
 	req.Message = strings.TrimSpace(req.Message)
-	if req.Message == "" || utf8.RuneCountInString(req.Message) > maxAgentMessageChars {
+	files, err := checkAttachments(req.Attachments)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if (req.Message == "" && len(files) == 0) || utf8.RuneCountInString(req.Message) > maxAgentMessageChars {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("Write a message of 1–%d characters.", maxAgentMessageChars))
 		return
 	}
@@ -97,6 +155,9 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 
 	var history []llm.Message
 	id, title := req.ChatID, req.Message
+	if title == "" {
+		title = files[0].Name
+	}
 	if id != "" && !chatIDRe.MatchString(id) {
 		writeError(w, http.StatusNotFound, "No such conversation. Start a new one.")
 		return
@@ -123,7 +184,7 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "This conversation is very long. Start a new one.")
 		return
 	}
-	history = append(agent.Complete(history), llm.Message{Role: "user", Text: req.Message})
+	history = append(agent.Complete(history), llm.Message{Role: "user", Text: req.Message, Attachments: files})
 
 	today := time.Now()
 	if t, err := store.ParseDate(req.Today); err == nil {

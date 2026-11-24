@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -360,6 +361,36 @@ func TestAgentChat(t *testing.T) {
 	list := decodeJSON[[]store.ChatSummary](t, e.do(t, c, "GET", "/api/chats", nil))
 	if len(list) != 1 {
 		t.Errorf("chats: %+v", list)
+	}
+
+	// Files: the demo model says it can't read them; the turn and its files are saved, titled by the first file.
+	png := base64.StdEncoding.EncodeToString([]byte("not really a png"))
+	events = readEvents(t, e.do(t, c, "POST", "/api/agent/chat", map[string]any{"attachments": []any{map[string]any{"name": "receipt.png", "type": "image/png", "data": png}}}))
+	var reply strings.Builder
+	for _, ev := range events {
+		if ev["type"] == "text" {
+			reply.WriteString(ev["text"].(string))
+		}
+	}
+	if events[0]["title"] != "receipt.png" || !strings.Contains(reply.String(), "got 1 file") {
+		t.Errorf("a file: %v", events)
+	}
+	withFile := decodeJSON[struct {
+		Messages []map[string]any `json:"messages"`
+	}](t, e.do(t, c, "GET", "/api/chats/"+events[0]["id"].(string), nil))
+	if att, _ := withFile.Messages[0]["attachments"].([]any); len(att) != 1 {
+		t.Errorf("the saved file: %v", withFile.Messages[0])
+	}
+	for name, body := range map[string]map[string]any{
+		"an exe":    {"message": "x", "attachments": []any{map[string]any{"name": "a.exe", "type": "application/x-msdownload", "data": png}}},
+		"bad data":  {"message": "x", "attachments": []any{map[string]any{"name": "a.png", "type": "image/png", "data": "!!"}}},
+		"not text":  {"message": "x", "attachments": []any{map[string]any{"name": "a.csv", "type": "text/csv", "data": base64.StdEncoding.EncodeToString([]byte{0xff, 0xfe, 0x00})}}},
+		"six files": {"message": "x", "attachments": []any{map[string]any{"name": "1.png", "type": "image/png", "data": png}, map[string]any{"name": "2.png", "type": "image/png", "data": png}, map[string]any{"name": "3.png", "type": "image/png", "data": png}, map[string]any{"name": "4.png", "type": "image/png", "data": png}, map[string]any{"name": "5.png", "type": "image/png", "data": png}, map[string]any{"name": "6.png", "type": "image/png", "data": png}}},
+		"nothing":   {"message": " "},
+	} {
+		if code := status(t, e.do(t, c, "POST", "/api/agent/chat", body)); code != 400 {
+			t.Errorf("%s: %d", name, code)
+		}
 	}
 
 	// Without a model: a plain error, before streaming.

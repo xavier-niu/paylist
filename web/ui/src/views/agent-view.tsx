@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
-import { ArrowUpIcon, CheckIcon, ChevronRightIcon, HistoryIcon, SparklesIcon, SquareIcon, SquarePenIcon, Trash2Icon, XIcon } from "lucide-react"
+import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
+import { ArrowUpIcon, CheckIcon, ChevronRightIcon, FileTextIcon, HistoryIcon, PaperclipIcon, SparklesIcon, SquareIcon, SquarePenIcon, Trash2Icon, UploadIcon, XIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Loading, Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { api, ApiError, type ChatMessage, type ChatSummary, type ToolCall, type ToolResult } from "@/lib/api"
+import { ACCEPT, isImage, readAttachments, sizeLabel, type Attachment } from "@/lib/attachments"
 import { renderMarkdown } from "@/lib/markdown"
 import { PRESETS } from "@/lib/presets"
 import { useApp } from "@/lib/state"
@@ -15,7 +16,7 @@ import { cn } from "@/lib/utils"
 import { locale, t, tParts } from "@/lib/i18n"
 
 type Item =
-  | { kind: "user"; text: string }
+  | { kind: "user"; text: string; files?: Attachment[] }
   | { kind: "assistant"; text: string }
   | { kind: "tool"; call: ToolCall; result?: ToolResult }
   | { kind: "notice"; text: string }
@@ -48,7 +49,7 @@ function toItems(msgs: ChatMessage[]): Item[] {
   const items: Item[] = []
   const tools = new Map<string, Extract<Item, { kind: "tool" }>>()
   for (const m of msgs) {
-    if (m.role === "user") items.push({ kind: "user", text: m.text ?? "" })
+    if (m.role === "user") items.push({ kind: "user", text: m.text ?? "", files: m.attachments })
     else if (m.role === "assistant") {
       if (m.text) items.push({ kind: "assistant", text: m.text })
       for (const c of m.tool_calls ?? []) {
@@ -112,6 +113,11 @@ export function AgentView({ chatId }: { chatId: string }) {
   const [loading, setLoading] = useState(false)
   const [running, setRunning] = useState(false)
   const [input, setInput] = useState("")
+  // Files waiting to go with the next message; dragging some over the page shows where to drop them.
+  const [files, setFiles] = useState<(Attachment & { size: number; key: string })[]>([])
+  const [dragging, setDragging] = useState(false)
+  const dragDepth = useRef(0)
+  const pickerRef = useRef<HTMLInputElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const currentRef = useRef(chatId) // the conversation the page shows
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -151,12 +157,50 @@ export function AgentView({ chatId }: { chatId: string }) {
     if (el && stickRef.current) el.scrollTop = el.scrollHeight
   }, [items])
 
-  const send = async (text: string) => {
+  const attach = async (list: FileList | File[] | null) => {
+    if (!list || list.length === 0) return
+    const { ok, errors } = await readAttachments([...list], files.map((f) => f.size))
+    errors.forEach((e) => toast.error(e))
+    if (ok.length) setFiles((l) => [...l, ...ok.map((f) => ({ ...f, key: `${f.name}-${f.size}-${Math.random()}` }))])
+    inputRef.current?.focus()
+  }
+
+  // Dropping files anywhere on the page attaches them.
+  const hasFiles = (e: DragEvent) => [...e.dataTransfer.types].includes("Files")
+  const drag = {
+    onDragEnter: (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      dragDepth.current++
+      setDragging(true)
+    },
+    onDragOver: (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "copy"
+    },
+    onDragLeave: (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      dragDepth.current = Math.max(0, dragDepth.current - 1)
+      if (dragDepth.current === 0) setDragging(false)
+    },
+    onDrop: (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      dragDepth.current = 0
+      setDragging(false)
+      void attach(e.dataTransfer.files)
+    },
+  }
+
+  const send = async (text: string, withFiles = files) => {
     text = text.trim()
-    if (!text || running) return
+    if ((!text && withFiles.length === 0) || running) return
+    const attachments = withFiles.map(({ name, type, data }) => ({ name, type, data }))
     setInput("")
+    setFiles([])
     stickRef.current = true
-    setItems((l) => [...l, { kind: "user", text }])
+    setItems((l) => [...l, { kind: "user", text, files: attachments }])
     setRunning(true)
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -164,7 +208,7 @@ export function AgentView({ chatId }: { chatId: string }) {
     const push = (fn: (l: Item[]) => Item[]) => setItems(fn)
     try {
       await api.agentTurn(
-        { chat_id: currentRef.current || undefined, message: text },
+        { chat_id: currentRef.current || undefined, message: text, attachments: attachments.length ? attachments : undefined },
         (ev) => {
           switch (ev.type) {
             case "chat":
@@ -256,7 +300,15 @@ export function AgentView({ chatId }: { chatId: string }) {
   const empty = !loading && items.length === 0
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-var(--bar,0px))] w-full max-w-[1200px] flex-col px-4 pt-5 sm:px-8">
+    <div className="relative mx-auto flex h-[calc(100dvh-var(--bar,0px))] w-full max-w-[1200px] flex-col px-4 pt-5 sm:px-8" {...drag}>
+      {dragging && (
+        <div className="pointer-events-none absolute inset-3 z-20 grid place-items-center rounded-[20px] border-2 border-dashed border-ink/40 bg-paper/85 backdrop-blur-[2px]">
+          <span className="grid justify-items-center gap-2 text-[14px] font-medium">
+            <UploadIcon className="size-6" />
+            {t("Drop to attach")}
+          </span>
+        </div>
+      )}
       <PageHeader title={t("Agent")}>
         <Popover>
           <PopoverTrigger asChild>
@@ -324,8 +376,22 @@ export function AgentView({ chatId }: { chatId: string }) {
             switch (it.kind) {
               case "user":
                 return (
-                  <div key={i} className="flex justify-end">
-                    <div className="max-w-[85%] rounded-[18px] bg-wash px-4 py-2.5 text-[14.5px] whitespace-pre-wrap">{it.text}</div>
+                  <div key={i} className="grid justify-items-end gap-1.5">
+                    {it.files && it.files.length > 0 && (
+                      <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
+                        {it.files.map((f, j) =>
+                          isImage(f) ? (
+                            <img key={j} src={`data:${f.type};base64,${f.data}`} alt={f.name} title={f.name} className="max-h-44 max-w-60 rounded-[12px] object-cover shadow-[0_0_0_1px_var(--rule)]" />
+                          ) : (
+                            <span key={j} className="flex h-10 max-w-60 items-center gap-2 rounded-[12px] bg-sheet px-3 text-[13px] shadow-[inset_0_0_0_1px_var(--rule-2)]" title={f.name}>
+                              <FileTextIcon className="size-4 shrink-0 text-ink-2" />
+                              <span className="truncate">{f.name}</span>
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    )}
+                    {it.text && <div className="max-w-[85%] rounded-[18px] bg-wash px-4 py-2.5 text-[14.5px] whitespace-pre-wrap">{it.text}</div>}
                   </div>
                 )
               case "assistant":
@@ -354,14 +420,49 @@ export function AgentView({ chatId }: { chatId: string }) {
         {empty && model.active && (
           <div className="mb-3 flex flex-wrap gap-2">
             {SUGGESTIONS().map((s) => (
-              <button key={s} type="button" className="pill !h-8 text-[13.5px]" onClick={() => void send(s)} disabled={running}>
+              <button key={s} type="button" className="pill !h-8 text-[13.5px]" onClick={() => void send(s, [])} disabled={running}>
                 {s}
               </button>
             ))}
           </div>
         )}
         <div className="rounded-[16px] bg-sheet p-2 shadow-[inset_0_0_0_1px_var(--rule-2)] focus-within:shadow-[inset_0_0_0_1.5px_var(--ink)]">
+          {files.length > 0 && (
+            <ul className="flex flex-wrap gap-2 px-1.5 pt-1.5 pb-1" aria-label={t("Attached files")}>
+              {files.map((f) => (
+                <li key={f.key} className="group relative">
+                  {isImage(f) ? (
+                    <img src={`data:${f.type};base64,${f.data}`} alt={f.name} title={f.name} className="size-14 rounded-[10px] object-cover shadow-[0_0_0_1px_var(--rule)]" />
+                  ) : (
+                    <span className="flex h-14 w-48 items-center gap-2.5 rounded-[10px] bg-side px-3 shadow-[inset_0_0_0_1px_var(--rule)]" title={f.name}>
+                      <FileTextIcon className="size-5 shrink-0 text-ink-2" />
+                      <span className="grid min-w-0">
+                        <span className="truncate text-[13px] font-medium">{f.name}</span>
+                        <span className="text-[11.5px] text-ink-2 uppercase">
+                          {f.name.includes(".") ? f.name.split(".").pop() : f.type.split("/").pop()} · {sizeLabel(f.size)}
+                        </span>
+                      </span>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={t("Remove {name}", { name: f.name })}
+                    onClick={() => setFiles((l) => l.filter((x) => x.key !== f.key))}
+                    className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-ink text-paper opacity-0 shadow-sm group-hover:opacity-100 focus-visible:opacity-100 max-md:opacity-100"
+                  >
+                    <XIcon className="size-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <textarea
+            onPaste={(e) => {
+              if (e.clipboardData.files.length > 0) {
+                e.preventDefault()
+                void attach(e.clipboardData.files)
+              }
+            }}
             ref={inputRef}
             id="agent-message"
             value={input}
@@ -374,16 +475,31 @@ export function AgentView({ chatId }: { chatId: string }) {
             className="max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-2 text-[14.5px] outline-none placeholder:text-muted-foreground [field-sizing:content]"
             autoFocus
           />
-          <div className="flex items-center justify-between gap-2 px-1">
+          <div className="flex items-center gap-1.5 px-1">
+            <button type="button" aria-label={t("Attach files")} title={t("Attach files")} onClick={() => pickerRef.current?.click()} className="grid size-7 place-items-center rounded-full text-ink-2 hover:bg-wash hover:text-ink">
+              <PaperclipIcon className="size-4" />
+            </button>
+            <input
+              ref={pickerRef}
+              type="file"
+              multiple
+              accept={ACCEPT}
+              className="hidden"
+              onChange={(e) => {
+                void attach(e.target.files)
+                e.target.value = ""
+              }}
+            />
             <a href="#/settings" className="pill soft !h-7 max-w-[60%] !px-3 text-[12.5px] text-ink-2">
               <span className="truncate">{providerLabel || t("No model")}</span>
             </a>
+            <span className="flex-1" />
             {running ? (
               <button type="button" aria-label={t("Stop")} onClick={() => abortRef.current?.abort()} className="grid size-8 place-items-center rounded-full bg-ink text-paper">
                 <SquareIcon className="size-3 fill-current" />
               </button>
             ) : (
-              <button type="submit" aria-label={t("Send")} disabled={!input.trim() || !model.active} className="grid size-8 place-items-center rounded-full bg-ink text-paper disabled:opacity-25">
+              <button type="submit" aria-label={t("Send")} disabled={(!input.trim() && files.length === 0) || !model.active} className="grid size-8 place-items-center rounded-full bg-ink text-paper disabled:opacity-25">
                 <ArrowUpIcon className="size-4" />
               </button>
             )}

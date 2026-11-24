@@ -14,6 +14,7 @@ package llm
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -47,18 +48,45 @@ type ToolResult struct {
 	IsError bool   `json:"is_error,omitempty"`
 }
 
+// Attachment is a file the user sent with a message: an image (PNG, JPEG,
+// GIF or WebP), a PDF, or text (plain, CSV, TSV, Markdown or JSON).
+type Attachment struct {
+	Name string `json:"name"`
+	Type string `json:"type"` // its MIME type
+	Data string `json:"data"` // base64
+}
+
+// Kind sorts an attachment by how models take it: "image", "pdf" or "text".
+func (a Attachment) Kind() string {
+	switch {
+	case strings.HasPrefix(a.Type, "image/"):
+		return "image"
+	case a.Type == "application/pdf":
+		return "pdf"
+	default:
+		return "text"
+	}
+}
+
+// Text is a text attachment's content.
+func (a Attachment) Text() string {
+	b, _ := base64.StdEncoding.DecodeString(a.Data)
+	return string(b)
+}
+
 // Message is one turn of a conversation:
-//   - "user":      Text
+//   - "user":      Text, and any Attachments
 //   - "assistant": Text and ToolCalls; Provider and Raw hold the provider's own
 //     form of the message, replayed as-is to the same provider
 //   - "tool":      Results, one for each of the previous message's ToolCalls
 type Message struct {
-	Role      string          `json:"role"`
-	Text      string          `json:"text,omitempty"`
-	ToolCalls []ToolCall      `json:"tool_calls,omitempty"`
-	Results   []ToolResult    `json:"results,omitempty"`
-	Provider  string          `json:"provider,omitempty"`
-	Raw       json.RawMessage `json:"raw,omitempty"`
+	Role        string          `json:"role"`
+	Text        string          `json:"text,omitempty"`
+	Attachments []Attachment    `json:"attachments,omitempty"`
+	ToolCalls   []ToolCall      `json:"tool_calls,omitempty"`
+	Results     []ToolResult    `json:"results,omitempty"`
+	Provider    string          `json:"provider,omitempty"`
+	Raw         json.RawMessage `json:"raw,omitempty"`
 }
 
 // Stop says why the model stopped.
