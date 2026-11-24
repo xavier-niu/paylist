@@ -113,7 +113,7 @@ export function App() {
     void boot()
   }, [boot])
 
-  // N opens a new entry and R a refund, unless typing somewhere.
+  // N opens a new entry and R a refund, both on the ledger, unless typing somewhere.
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
@@ -121,6 +121,8 @@ export function App() {
       if ((key !== "n" && key !== "r") || e.metaKey || e.ctrlKey || e.altKey) return
       if (t.closest("input, textarea, select, [contenteditable], [role=dialog]")) return
       e.preventDefault()
+      // Both open over the ledger, where what they change shows up.
+      if (readRoute().route !== "ledger") location.hash = "#/ledger"
       if (key === "n") setForm({ open: true })
       else setRefunding(true)
     }
