@@ -322,13 +322,11 @@ type Suggestion struct {
 
 // SuggestEntries finds names containing q among past purchases (refunds
 // left out), one per name with its latest entry: names starting with q
-// first, then the most used, then the most recent.
+// first, then the most used, then the most recent. With no q, every name
+// comes, most used first (the web app matches them itself, by pinyin too).
 func (s *Store) SuggestEntries(ctx context.Context, userID int64, q string, limit int) ([]Suggestion, error) {
 	q = strings.TrimSpace(q)
-	if q == "" {
-		return []Suggestion{}, nil
-	}
-	limit = min(max(limit, 1), 20)
+	limit = min(max(limit, 1), 1000)
 	rows, err := s.db.QueryContext(ctx, `
 		WITH m AS (
 			SELECT name, type, card, amount, date,

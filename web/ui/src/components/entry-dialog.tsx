@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
 import { CalendarIcon, CheckIcon, ChevronDownCircleIcon, HashIcon, Trash2Icon, Undo2Icon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Spinner } from "@/components/ui/spinner"
 import { api, currencySymbol, dateLabel, money, monthLabel, today, type Entry, type Suggestion } from "@/lib/api"
 import { optionColor, useApp } from "@/lib/state"
+import { matchAt } from "@/lib/search"
 import { cn } from "@/lib/utils"
 import { t } from "@/lib/i18n"
 
@@ -52,8 +53,8 @@ export function EntryDialog({
   const nameRef = useRef<HTMLInputElement>(null)
   // What was just added, while the form stays open for the next one.
   const [added, setAdded] = useState<{ name: string; month: string; n: number } | null>(null)
-  // Names used before that hold what's being typed; picking one fills in the rest.
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  // Names used before, loaded when the form opens; those matching what's typed (by pinyin too) are offered, and picking one fills in the rest.
+  const [known, setKnown] = useState<Suggestion[]>([])
   const [suggesting, setSuggesting] = useState(false) // the list is wanted: typing in the name
   const [active, setActive] = useState(-1)
   // A refund: the purchases with this name and amount, for the text they're for; the one picked is deleted.
@@ -82,27 +83,27 @@ export function EntryDialog({
   }, [open, entry])
 
   useEffect(() => {
-    const q = name.trim()
-    if (entry || !suggesting || !q) {
-      setSuggestions([])
-      return
-    }
+    if (!open || entry) return
     let live = true
-    const timer = setTimeout(() => {
-      api
-        .suggest(q)
-        .then((list) => {
-          if (!live) return
-          setSuggestions(list)
-          setActive(-1)
-        })
-        .catch(() => {})
-    }, 120)
+    api
+      .suggest("", 1000)
+      .then((list) => live && setKnown(list))
+      .catch(() => {})
     return () => {
       live = false
-      clearTimeout(timer)
     }
-  }, [name, suggesting, entry])
+  }, [open, entry])
+  // Names that start with what's typed first, then the most used, then the latest.
+  const suggestions = useMemo(() => {
+    const q = name.trim()
+    if (!suggesting || !q) return []
+    return known
+      .map((sg) => ({ sg, at: matchAt(sg.name, q) }))
+      .filter((x) => x.at >= 0)
+      .sort((a, b) => Number(a.at !== 0) - Number(b.at !== 0) || b.sg.uses - a.sg.uses || b.sg.date.localeCompare(a.sg.date))
+      .slice(0, 6)
+      .map((x) => x.sg)
+  }, [known, name, suggesting])
   const showSuggestions = suggesting && suggestions.length > 0
 
   const pick = (sg: Suggestion) => {
@@ -277,6 +278,7 @@ export function EntryDialog({
               onChange={(e) => {
                 setName(e.target.value)
                 setSuggesting(true)
+                setActive(-1)
               }}
               onKeyDown={onNameKey}
               onBlur={() => setSuggesting(false)}

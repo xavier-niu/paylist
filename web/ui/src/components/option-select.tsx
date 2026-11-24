@@ -3,6 +3,7 @@ import { CheckIcon } from "lucide-react"
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { Option } from "@/lib/api"
+import { matches } from "@/lib/search"
 import { cn } from "@/lib/utils"
 import { t } from "@/lib/i18n"
 
@@ -44,10 +45,10 @@ export function OptionSelect({
 
   const current = options.find((o) => o.name.toLowerCase() === value.toLowerCase())
   const q = query.trim().toLowerCase()
-  const matches = useMemo(() => options.filter((o) => o.name.toLowerCase().includes(q)), [options, q])
+  const found = useMemo(() => options.filter((o) => matches(o.name, q)), [options, q])
   const canCreate = q !== "" && !options.some((o) => o.name.toLowerCase() === q)
   const rows: ({ t: "opt"; o: Option } | { t: "create" } | { t: "none" })[] = [
-    ...matches.map((o) => ({ t: "opt" as const, o })),
+    ...found.map((o) => ({ t: "opt" as const, o })),
     ...(canCreate ? [{ t: "create" as const }] : []),
     ...(value && !q ? [{ t: "none" as const }] : []),
   ]

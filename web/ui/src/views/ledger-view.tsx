@@ -13,6 +13,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { api, compareLabel, currencySymbol, dateLabel, money, monthLabel, monthName, plainAmount, shiftMonth, thisMonth, today, type Entry, type EntryInput, type Stats } from "@/lib/api"
 import { Money } from "@/lib/money"
 import { optionColor, useApp } from "@/lib/state"
+import { matches } from "@/lib/search"
 import { cn } from "@/lib/utils"
 import { t, tn } from "@/lib/i18n"
 
@@ -187,7 +188,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
         (e) =>
           (!typeFilter || e.type === typeFilter) &&
           (!cardFilter || e.card === cardFilter) &&
-          (!q || [e.name, e.type, e.card].some((f) => f.toLowerCase().includes(q))),
+          (!q || [e.name, e.type, e.card].some((f) => matches(f, q))),
       )
   }, [entries, query, typeFilter, cardFilter, order])
   const total = shown.reduce((s, e) => s + Math.round(e.amount * 100), 0) / 100

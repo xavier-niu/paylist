@@ -225,8 +225,9 @@ func TestSuggestEntries(t *testing.T) {
 	if len(got) != 2 || got[0].Name != "coffee" || got[0].Uses != 2 || got[0].Amount != 19.5 || got[0].Card != "Credit card" || got[1].Name != "Iced coffee" {
 		t.Errorf("suggestions: %+v", got)
 	}
-	if none, _ := st.SuggestEntries(ctx, u.ID, "  ", 5); len(none) != 0 {
-		t.Errorf("blank text: %+v", none)
+	// No text: every name, most used first.
+	if all, _ := st.SuggestEntries(ctx, u.ID, "  ", 100); len(all) != 3 || all[0].Name != "coffee" {
+		t.Errorf("blank text: %+v", all)
 	}
 }
 

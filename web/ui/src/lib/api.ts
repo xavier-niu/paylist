@@ -223,7 +223,7 @@ export const api = {
   /** Applies a refund: a picked purchase by id, or its name and amount (with what to record it under if nothing matches). */
   refund: (body: { id?: number; name?: string; amount?: number; type?: string; card?: string; date?: string }) => request<RefundResult>("POST", "/api/refund", { ...body, today: today() }),
   /** Names used before that hold the text, one per name with how it was last entered. */
-  suggest: (text: string) => request<Suggestion[]>("GET", "/api/entries/suggest" + q({ q: text })),
+  suggest: (text: string, limit?: number) => request<Suggestion[]>("GET", "/api/entries/suggest" + q({ q: text, limit })),
   createEntry: (e: EntryInput) => request<Entry>("POST", "/api/entries", e),
   updateEntry: (id: number, e: EntryInput) => request<Entry>("PUT", `/api/entries/${id}`, e),
   deleteEntries: (ids: number[]) => request<{ deleted: number }>("POST", "/api/entries/delete", { ids }),

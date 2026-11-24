@@ -15,6 +15,7 @@ import {
 import { Toaster } from "@/components/ui/sonner"
 import { api, money, monthLabel, plainAmount, setSignedOutHandler, thisMonth, type Config, type Entry, type GroupTotal, type ModelSettings, type MonthTotal, type Options, type User } from "@/lib/api"
 import { AppContext, applyTheme, type AppState } from "@/lib/state"
+import { loadPinyin } from "@/lib/search"
 import { cn } from "@/lib/utils"
 import { AgentView } from "@/views/agent-view"
 import { LoginView } from "@/views/login-view"
@@ -111,6 +112,12 @@ export function App() {
     setSignedOutHandler(() => setSession(null))
     void boot()
   }, [boot])
+
+  // Pinyin matching (lib/search) loads once the app is up.
+  useEffect(() => {
+    const id = setTimeout(() => void loadPinyin(), 1500)
+    return () => clearTimeout(id)
+  }, [])
 
   // N opens a new entry and R a refund, both on the ledger, unless typing somewhere.
   useEffect(() => {
