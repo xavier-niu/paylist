@@ -47,6 +47,16 @@ export interface Entry {
   updated_at: string
 }
 
+/** A name used before, with how it was last entered (the New entry form's suggestions). */
+export interface Suggestion {
+  name: string
+  type: string
+  card: string
+  amount: number
+  date: string
+  uses: number
+}
+
 export type EntryInput = Partial<Pick<Entry, "name" | "type" | "amount" | "date" | "card">>
 
 export interface Option {
@@ -198,6 +208,8 @@ export const api = {
   deleteUser: (id: number) => request<{ ok: boolean }>("DELETE", `/api/admin/users/${id}`),
 
   entries: (month: string) => request<{ month: string; entries: Entry[] }>("GET", "/api/entries" + q({ month })),
+  /** Names used before that hold the text, one per name with how it was last entered. */
+  suggest: (text: string) => request<Suggestion[]>("GET", "/api/entries/suggest" + q({ q: text })),
   /** Entries dated from..to (YYYY-MM-DD, both included), oldest first. */
   entriesBetween: (from: string, to: string) => request<{ entries: Entry[] }>("GET", "/api/entries" + q({ from, to })),
   createEntry: (e: EntryInput) => request<Entry>("POST", "/api/entries", e),

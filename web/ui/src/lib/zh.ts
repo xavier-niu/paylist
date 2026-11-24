@@ -117,7 +117,9 @@ export const ZH: Record<string, string> = {
   "The entry's name, amount, type, card and date.": "记录的名称、金额、分类、支付方式和日期。",
   "A refund is a negative amount, such as −20.": "退款记为负数，例如 −20。",
   "Click again to delete": "再点一次删除",
-  "Save and add another": "保存并继续添加",
+  "Done": "完成",
+  "Added {name} · {n} so far": "已添加“{name}” · 共 {n} 笔",
+  "Used before": "用过的",
   "Saved {name}.": "已保存“{name}”。",
   "Deleted {name}.": "已删除“{name}”。",
 
