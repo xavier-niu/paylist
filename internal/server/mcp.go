@@ -16,7 +16,7 @@ import (
 	"github.com/xavier-niu/paylist/internal/store"
 )
 
-// MCP: the spending table as a Model Context Protocol server. External agents
+// MCP: the spending ledger as a Model Context Protocol server. External agents
 // (Claude Code, Codex, Cursor, …) reach it at /mcp with an agent token; the
 // agent page's assistant reaches the same tools through an in-memory session
 // (agentchat.go).
@@ -26,11 +26,13 @@ import (
 // Streamable HTTP, without sessions: each request is a whole exchange,
 // answered with JSON.
 
-const mcpInstructions = `Paylist is the user's personal spending ledger. Each entry has a name, a type, an amount, a date (YYYY-MM-DD) and the card it was paid with; type and card are choices from lists of options. The ledger is kept month by month.
+const mcpInstructions = `Paylist is the user's personal spending ledger. Each entry has a name, a type, an amount, a date (YYYY-MM-DD) and the card it was paid with; type and card are choices from lists of options. The ledger is kept month by month. get_profile gives the user's currency and today's date.
 
-Read it with list_entries (one month by default) and get_stats (totals by month, by day, by type and by card). Change it with add_entries (several at once), update_entry and delete_entries. list_options shows the types and cards; manage_option creates, renames, recolors or deletes one. When adding entries, reuse an existing type and card whose name fits before making new ones. Delete only what the user asked to delete.`
+Read it with list_entries (one month, a date range, a type, a card or a name), get_stats (a month's totals by day, by type and by card, and the months before) and list_months (every month with entries). Change it with add_entries (several at once), update_entry and delete_entries. list_options shows the types and cards; manage_option creates, renames, recolors or deletes one.
 
-// The user whose table a tool works on.
+When adding entries, reuse an existing type and card whose name fits before making new ones; when the user names something without its amount, type or card, suggest_entries shows how it was entered before. For a refund, use refund: it deletes the purchase it undoes, or records the refund as a negative amount when no purchase matches. Delete only what the user asked to delete.`
+
+// The user whose ledger a tool works on.
 type mcpCallerFunc func(req *mcp.CallToolRequest) (*store.User, error)
 
 type mcpListIn struct {
@@ -97,12 +99,40 @@ type mcpOptionOut struct {
 	Cleared int64         `json:"cleared,omitempty" jsonschema:"delete: how many entries lost this option"`
 }
 
+type mcpSuggestIn struct {
+	Query string `json:"query" jsonschema:"part of a name, such as coffee"`
+	Limit int    `json:"limit,omitempty" jsonschema:"at most this many names (default 6, up to 20)"`
+}
+
+type mcpSuggestOut struct {
+	Suggestions []store.Suggestion `json:"suggestions" jsonschema:"names used before, each with its latest type, card, amount and date, and how many entries have it; names starting with the query first, then the most used"`
+}
+
+type mcpMonthsOut struct {
+	Months []store.MonthTotal `json:"months" jsonschema:"every month with entries up to this one, newest first, with its total and count"`
+}
+
+type mcpRefundIn struct {
+	ID     int64    `json:"id,omitempty" jsonschema:"a purchase's id (from list_entries, or from the matches of an earlier call), to refund that one"`
+	Name   string   `json:"name,omitempty" jsonschema:"what was refunded, or part of its name"`
+	Amount *float64 `json:"amount,omitempty" jsonschema:"how much came back"`
+	Date   string   `json:"date,omitempty" jsonschema:"YYYY-MM-DD, for a refund that has to be added because no purchase matches; today when left out"`
+}
+
+type mcpProfileOut struct {
+	Name     string `json:"name,omitempty"`
+	Currency string `json:"currency" jsonschema:"the ISO 4217 code amounts are in, such as CNY or USD"`
+	Language string `json:"language" jsonschema:"en, zh, or system (the browser's)"`
+	Today    string `json:"today" jsonschema:"today's date, YYYY-MM-DD"`
+	Weekday  string `json:"weekday"`
+}
+
 type mcpStatsIn struct {
 	Month  string `json:"month,omitempty" jsonschema:"the month, YYYY-MM; the current month when left out"`
 	Months int    `json:"months,omitempty" jsonschema:"how many months of monthly totals to include, up to this one (1 to 36, default 12)"`
 }
 
-// newMCPServer builds the MCP server whose tools work on the table of the user
+// newMCPServer builds the MCP server whose tools work on the ledger of the user
 // caller returns.
 func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "paylist", Title: "Paylist", Version: "1.0.0"},
@@ -284,6 +314,71 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			return nil, store.Stats{}, errors.New(sentence(err))
 		}
 		return nil, *stats, nil
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_months",
+		Description: "Every month that has entries, up to the current one, newest first, with its total and count.",
+		Annotations: &mcp.ToolAnnotations{Title: "List months", ReadOnlyHint: true, OpenWorldHint: &no},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, mcpMonthsOut, error) {
+		u, err := caller(req)
+		if err != nil {
+			return nil, mcpMonthsOut{}, err
+		}
+		months, err := st.AllMonths(ctx, u.ID, time.Now().Format("2006-01"))
+		return nil, mcpMonthsOut{Months: months}, err
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "suggest_entries",
+		Description: "Names used before that contain the query, one per name with how it was last entered (type, card, amount, date) " +
+			"and how often. Use it to fill in what the user leaves out when adding something they've bought before.",
+		Annotations: &mcp.ToolAnnotations{Title: "Suggest entries", ReadOnlyHint: true, OpenWorldHint: &no},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpSuggestIn) (*mcp.CallToolResult, mcpSuggestOut, error) {
+		u, err := caller(req)
+		if err != nil {
+			return nil, mcpSuggestOut{}, err
+		}
+		if in.Limit <= 0 {
+			in.Limit = 6
+		}
+		out, err := st.SuggestEntries(ctx, u.ID, in.Query, in.Limit)
+		return nil, mcpSuggestOut{Suggestions: out}, err
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "refund",
+		Description: "Record a refund the way the ledger's Refund button does. Give the purchase's id, or its name and/or amount: " +
+			"a purchase from the last 120 days that matches (the name contains it, the amount is the same) is deleted and returned as refunded; " +
+			"if several match, nothing changes and they come back as matches, so call again with the right id (ask the user if unsure); " +
+			"if none match, the refund is added as a negative amount (this needs the amount) and returned as added.",
+		Annotations: &mcp.ToolAnnotations{Title: "Refund", DestructiveHint: &yes, OpenWorldHint: &no},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpRefundIn) (*mcp.CallToolResult, store.RefundResult, error) {
+		u, err := caller(req)
+		if err != nil {
+			return nil, store.RefundResult{}, err
+		}
+		res, err := st.Refund(ctx, u.ID, store.RefundInput{ID: in.ID, Name: in.Name, Amount: in.Amount, Date: in.Date}, time.Now())
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, store.RefundResult{}, fmt.Errorf("there is no entry %d", in.ID)
+		}
+		if err != nil {
+			return nil, store.RefundResult{}, errors.New(sentence(err))
+		}
+		return nil, *res, nil
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "get_profile",
+		Description: "The user's currency and language, and today's date: what amounts are in and what \"today\" means.",
+		Annotations: &mcp.ToolAnnotations{Title: "Get the profile", ReadOnlyHint: true, OpenWorldHint: &no},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, mcpProfileOut, error) {
+		u, err := caller(req)
+		if err != nil {
+			return nil, mcpProfileOut{}, err
+		}
+		now := time.Now()
+		return nil, mcpProfileOut{Name: u.Name, Currency: u.Prefs.Currency, Language: u.Prefs.Language, Today: now.Format("2006-01-02"), Weekday: now.Weekday().String()}, nil
 	})
 	return srv
 }

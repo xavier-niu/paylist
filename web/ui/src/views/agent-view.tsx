@@ -29,8 +29,12 @@ const TOOLS: Record<string, [running: string, done: string]> = {
   list_options: ["reading the types and cards", "read the types and cards"],
   manage_option: ["changing a type or card", "changed a type or card"],
   get_stats: ["reading the statistics", "read the statistics"],
+  list_months: ["reading the months", "read the months"],
+  suggest_entries: ["looking up names used before", "looked up names used before"],
+  refund: ["recording a refund", "recorded a refund"],
+  get_profile: ["reading the profile", "read the profile"],
 }
-const CHANGES = new Set(["add_entries", "update_entry", "delete_entries", "manage_option"])
+const CHANGES = new Set(["add_entries", "update_entry", "delete_entries", "manage_option", "refund"])
 
 const SUGGESTIONS = () => [
   t("Add lunch 35 and a metro ride 4.50 today, paid by card"),

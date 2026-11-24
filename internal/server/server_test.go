@@ -266,7 +266,7 @@ func TestMCP(t *testing.T) {
 	}
 	defer s.Close()
 	tools, err := s.ListTools(t.Context(), nil)
-	if err != nil || len(tools.Tools) != 7 {
+	if err != nil || len(tools.Tools) != 11 {
 		t.Fatalf("tools: %v %v", tools, err)
 	}
 
@@ -296,7 +296,30 @@ func TestMCP(t *testing.T) {
 	if stats.Total != 34.5 || len(stats.ByCard) != 1 || stats.ByCard[0].Name != "Amex Gold" || len(stats.Monthly) != 3 {
 		t.Errorf("stats: %+v", stats)
 	}
-	del, _ := callTool[mcpDeleteOut](t, s, "delete_entries", map[string]any{"ids": []int64{added.Added[0].ID, added.Added[1].ID}})
+	if months, _ := callTool[mcpMonthsOut](t, s, "list_months", map[string]any{}); len(months.Months) != 1 || months.Months[0].Month != month || months.Months[0].Total != 34.5 {
+		t.Errorf("months: %+v", months)
+	}
+	if sg, _ := callTool[mcpSuggestOut](t, s, "suggest_entries", map[string]any{"query": "cof"}); len(sg.Suggestions) != 1 || sg.Suggestions[0].Type != "Food" || sg.Suggestions[0].Amount != 4.5 {
+		t.Errorf("suggest: %+v", sg)
+	}
+	if p, _ := callTool[mcpProfileOut](t, s, "get_profile", map[string]any{}); p.Currency != "CNY" || p.Today != time.Now().Format("2006-01-02") {
+		t.Errorf("profile: %+v", p)
+	}
+
+	// A refund that matches a purchase deletes it; one that doesn't is added as a negative amount.
+	ref, msg := callTool[store.RefundResult](t, s, "refund", map[string]any{"name": "coffee", "amount": 4.5})
+	if msg != "" || ref.Refunded == nil || ref.Refunded.ID != added.Added[0].ID {
+		t.Fatalf("refund: %+v %s", ref, msg)
+	}
+	ref, msg = callTool[store.RefundResult](t, s, "refund", map[string]any{"name": "Concert ticket", "amount": 80})
+	if msg != "" || ref.Added == nil || ref.Added.Amount != -80 {
+		t.Fatalf("refund, no match: %+v %s", ref, msg)
+	}
+	if _, msg := callTool[store.RefundResult](t, s, "refund", map[string]any{"name": "nothing like it"}); msg == "" {
+		t.Error("a refund with no match and no amount was accepted")
+	}
+
+	del, _ := callTool[mcpDeleteOut](t, s, "delete_entries", map[string]any{"ids": []int64{ref.Added.ID, added.Added[1].ID}})
 	if del.Deleted != 2 {
 		t.Errorf("deleted %d", del.Deleted)
 	}
