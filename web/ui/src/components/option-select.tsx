@@ -9,6 +9,16 @@ import { matches } from "@/lib/search"
 import { cn } from "@/lib/utils"
 import { t } from "@/lib/i18n"
 
+/** Moves the focus to the next (or, with -1, the previous) field after el, within its window or the page. */
+function focusNext(el: HTMLElement, by: 1 | -1) {
+  const scope = el.closest<HTMLElement>("[role=dialog]") ?? document.body
+  const all = [...scope.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")].filter(
+    (x) => x.offsetParent !== null || x === el,
+  )
+  const i = all.indexOf(el)
+  all[i + by]?.focus()
+}
+
 /** A type or card: its color's dot and its name, in an outlined pill. */
 export function Tag({ name, color, className }: { name: string; color: string; className?: string }) {
   return (
@@ -33,7 +43,10 @@ export function OptionSelect({
   className,
   label,
   placeholder = "",
+  openOnFocus = true,
 }: {
+  /** Open the list when the field is reached with Tab, and Tab on to the next field from it. */
+  openOnFocus?: boolean
   placeholder?: string
   kind: "type" | "card"
   value: string
@@ -47,6 +60,16 @@ export function OptionSelect({
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  // Closing hands the focus back to the field: it mustn't open the list again then.
+  const justClosed = useRef(false)
+  // Tab out of the list moves the focus on itself, rather than back to the field.
+  const tabbing = useRef(false)
+  const close = () => {
+    justClosed.current = true
+    setOpen(false)
+    setQuery("")
+  }
   // Keep the active row in view as the arrows move it, wrapping round included.
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" })
@@ -68,14 +91,12 @@ export function OptionSelect({
 
   const [ask, confirmEl] = useConfirm()
   const pick = (name: string) => {
-    setOpen(false)
-    setQuery("")
+    close()
     if (name !== value) onChange(name)
   }
   // A new type or card is easy to make by a slip of the keyboard, so it's confirmed first.
   const create = (name: string) => {
-    setOpen(false)
-    setQuery("")
+    close()
     ask({
       title: kind === "type" ? t("Create the type “{name}”?", { name }) : t("Create the card “{name}”?", { name }),
       action: t("Create"),
@@ -101,6 +122,20 @@ export function OptionSelect({
     } else if (e.key === "Enter") {
       e.preventDefault()
       choose(active)
+    } else if (e.key === "Tab" && openOnFocus) {
+      // On to the next field (back, with Shift), taking the match typed for, if any.
+      e.preventDefault()
+      const r = q ? rows[active] : undefined
+      tabbing.current = true
+      if (r?.t === "opt") pick(r.o.name)
+      else close()
+      const from = triggerRef.current
+      requestAnimationFrame(() => {
+        tabbing.current = false
+        // The focus went on, not back to the field: coming back to it later opens the list again.
+        justClosed.current = false
+        if (from) focusNext(from, e.shiftKey ? -1 : 1)
+      })
     }
   }
 
@@ -109,13 +144,27 @@ export function OptionSelect({
       <Popover
         open={open}
         onOpenChange={(o) => {
+          if (!o) justClosed.current = true
           setOpen(o)
           setQuery("")
           setActive(0)
         }}
       >
         <PopoverTrigger asChild>
-          <button type="button" className={cn("cell", className)} aria-label={`${label}: ${value || t("none")}`}>
+          <button
+            ref={triggerRef}
+            type="button"
+            className={cn("cell", className)}
+            aria-label={`${label}: ${value || t("none")}`}
+            onFocus={(e) => {
+              // Reached by keyboard (not a click, not the focus coming back from the list): open.
+              if (openOnFocus && !open && !justClosed.current && e.currentTarget.matches(":focus-visible")) {
+                setActive(0)
+                setOpen(true)
+              }
+            }}
+            onBlur={() => (justClosed.current = false)}
+          >
             {value ? <Tag name={value} color={current?.color ?? "gray"} className="!shadow-none !bg-transparent !px-0" /> : <span className="text-muted-foreground/70">{placeholder}</span>}
           </button>
         </PopoverTrigger>
@@ -128,6 +177,7 @@ export function OptionSelect({
             e.preventDefault()
             inputRef.current?.focus()
           }}
+          onCloseAutoFocus={(e) => tabbing.current && e.preventDefault()}
         >
           <input
             ref={inputRef}
