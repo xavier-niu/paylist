@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
-import { EllipsisIcon, LogOutIcon, SettingsIcon, Trash2Icon, XIcon } from "lucide-react"
+import { LogOutIcon, Trash2Icon, XIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
 import { LedgerOptions } from "@/components/ledger-options"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { api, type Ledger, type LedgerMember } from "@/lib/api"
 import { CURRENCIES } from "@/lib/currencies"
 import { t } from "@/lib/i18n"
@@ -86,6 +85,7 @@ function LedgerSettings({ ledger }: { ledger: Ledger }) {
   const [email, setEmail] = useState("")
   const [role, setRole] = useState<"editor" | "viewer">("editor")
   const [ask, confirmEl] = useConfirm()
+  const [remove, removeEl] = useRemoveLedger()
   const loadMembers = useCallback(() => {
     api.ledgerMembers(ledger.id).then(setMembers).catch((e) => toast.error((e as Error).message))
   }, [ledger.id])
@@ -232,44 +232,16 @@ function LedgerSettings({ ledger }: { ledger: Ledger }) {
           <span className="label">{t("Types and cards")}</span>
           <LedgerOptions ledger={ledger} />
         </div>
+
+        <div className="border-t border-rule pt-5">
+          <button type="button" className={owner ? "btn danger" : "btn quiet"} onClick={() => remove(ledger)}>
+            {owner ? <Trash2Icon /> : <LogOutIcon />} {owner ? t("Delete ledger") : t("Leave ledger")}
+          </button>
+        </div>
       </div>
       {confirmEl}
+      {removeEl}
     </>
   )
 }
 
-/** A ledger's ⋯ menu in the sidebar: its settings, and deleting it (its owner) or leaving it. */
-export function LedgerMenu({ ledger, onSettings }: { ledger: Ledger; onSettings: () => void }) {
-  const [remove, confirmEl] = useRemoveLedger()
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-label={t("More for {name}", { name: ledger.name })}
-            title={t("More")}
-            className="absolute top-1/2 right-1 grid size-6 -translate-y-1/2 place-items-center rounded-md text-ink-2 opacity-0 group-hover/ledger:opacity-100 hover:bg-rule-2 hover:text-ink focus-visible:opacity-100 data-[state=open]:opacity-100"
-          >
-            <EllipsisIcon className="size-3.5" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="right" className="w-auto min-w-44 rounded-[12px] border-0 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0">
-          <DropdownMenuItem onSelect={onSettings}>
-            <SettingsIcon /> {t("Settings")}
-          </DropdownMenuItem>
-          {ledger.role === "owner" ? (
-            <DropdownMenuItem variant="destructive" onSelect={() => remove(ledger)}>
-              <Trash2Icon /> {t("Delete")}
-            </DropdownMenuItem>
-          ) : (
-            <DropdownMenuItem variant="destructive" onSelect={() => remove(ledger)}>
-              <LogOutIcon /> {t("Leave")}
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {confirmEl}
-    </>
-  )
-}

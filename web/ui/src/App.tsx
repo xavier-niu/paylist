@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { BookOpenIcon, BotIcon, CheckIcon, ChevronsUpDownIcon, LayoutDashboardIcon, LogOutIcon, PlusIcon, UsersIcon, MenuIcon, NotebookTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SettingsIcon, type LucideIcon } from "lucide-react"
+import { BotIcon, CheckIcon, ChevronsUpDownIcon, LayoutDashboardIcon, LogOutIcon, PlusIcon, UsersIcon, MenuIcon, NotebookTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SettingsIcon, type LucideIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { EntryDialog } from "@/components/entry-dialog"
 import { NewLedgerDialog } from "@/components/ledger-dialog"
-import { LedgerMenu, LedgerSettingsDialog } from "@/components/ledger-settings"
+import { LedgerSettingsDialog } from "@/components/ledger-settings"
 import { Logo, Wordmark } from "@/components/logo"
 import {
   DropdownMenu,
@@ -93,7 +93,11 @@ export function App() {
   const [refunding, setRefunding] = useState(false)
 
   useEffect(() => {
-    const on = () => setLoc(readRoute())
+    // A new page closes the phone menu, whatever led there.
+    const on = () => {
+      setLoc(readRoute())
+      setMenuOpen(false)
+    }
     window.addEventListener("hashchange", on)
     return () => window.removeEventListener("hashchange", on)
   }, [])
@@ -282,7 +286,10 @@ export function App() {
           <DropdownMenuContent align="start" className="w-64 rounded-[12px] border-0 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0">
             <DropdownMenuLabel className="font-normal text-muted-foreground">{t("Ledgers")}</DropdownMenuLabel>
             {ledgers.map((l) => (
-              <DropdownMenuItem key={l.id} onSelect={() => l.id !== ledger.id && void switchLedger(l.id)}>
+              <DropdownMenuItem key={l.id} onSelect={() => {
+                  go()
+                  if (l.id !== ledger.id) void switchLedger(l.id)
+                }}>
                 <CheckIcon className={cn(l.id !== ledger.id && "invisible")} />
                 <span className="min-w-0 flex-1 truncate">{l.name}</span>
                 {l.role !== "owner" ? (
@@ -292,8 +299,8 @@ export function App() {
                 )}
               </DropdownMenuItem>
             ))}
-            <DropdownMenuItem onSelect={() => setNewLedger(true)}><PlusIcon /> {t("New ledger")}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setLedgerSettings(ledger.id)}><SettingsIcon /> {t("Ledger settings")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => (go(), setNewLedger(true))}><PlusIcon /> {t("New ledger")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => (go(), setLedgerSettings(ledger.id))}><SettingsIcon /> {t("Ledger settings")}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="truncate font-normal text-muted-foreground">{session.user.email}</DropdownMenuLabel>
             <DropdownMenuItem onSelect={signOut}><LogOutIcon /> {t("Sign out")}</DropdownMenuItem>
@@ -320,46 +327,8 @@ export function App() {
       </nav>
 
       <div className="-mx-1 mt-5 min-h-0 flex-1 overflow-y-auto px-1">
-        {/* The ledgers: the open one marked, the others a click away. */}
-        <section aria-label={t("Ledgers")}>
-          <div className="flex items-center justify-between px-2.5 pb-1.5 text-[12.5px] text-ink-2">
-            {t("Ledgers")}
-            <button type="button" onClick={() => setNewLedger(true)} title={t("New ledger")} aria-label={t("New ledger")} className="-mr-1.5 grid size-5 place-items-center rounded-md hover:bg-wash hover:text-ink">
-              <PlusIcon className="size-3.5" />
-            </button>
-          </div>
-          <ul className="grid gap-0.5">
-            {ledgers.map((l) => (
-              <li key={l.id} className="group/ledger relative">
-                <button
-                  type="button"
-                  aria-current={l.id === ledger.id ? "true" : undefined}
-                  onClick={() => {
-                    go()
-                    if (l.id !== ledger.id) void switchLedger(l.id)
-                  }}
-                  title={l.role === "owner" ? l.name : t("{name}, shared by {owner}", { name: l.name, owner: l.owner })}
-                  className="flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[13.5px] group-hover/ledger:bg-wash aria-[current=true]:bg-fill aria-[current=true]:font-medium"
-                >
-                  <BookOpenIcon className="size-3.5 shrink-0 text-ink-2" />
-                  <span className="min-w-0 flex-1 truncate">{l.name}</span>
-                  {/* Its role, or that it's shared, where its ⋯ shows on hover. */}
-                  <span className="shrink-0 group-hover/ledger:invisible group-has-[[data-state=open]]/ledger:invisible">
-                    {l.role !== "owner" ? (
-                      <span className="text-[11.5px] font-normal text-muted-foreground">{l.role === "viewer" ? t("Viewer") : t("Editor")}</span>
-                    ) : (
-                      l.members > 1 && <UsersIcon className="size-3.5 text-muted-foreground" />
-                    )}
-                  </span>
-                </button>
-                <LedgerMenu ledger={l} onSettings={() => setLedgerSettings(l.id)} />
-              </li>
-            ))}
-          </ul>
-        </section>
-
         {byType.length > 0 && (
-          <section className="mt-5">
+          <section>
             <div className="px-2.5 pb-1.5 text-[12.5px] text-ink-2">{t("This month")}</div>
             <ul className="grid gap-0.5">
               {byType.map((g) => {
