@@ -325,6 +325,17 @@
 
   .caret::after { content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--ink); opacity: .5; animation: blink 1s steps(2) infinite; }
 
+  /* The agent at work. The cursor at the end of a reply as it comes: a dot, breathing, after the last word. */
+  .stream-caret { display: inline-block; width: .55em; height: .55em; margin-left: .3em; vertical-align: .08em; border-radius: 999px; background: var(--ink); animation: caret-breathe 1.1s ease-in-out infinite; }
+  /* Words lit by a passing sheen: thinking, a tool at work. */
+  .shimmer-text {
+    background: linear-gradient(100deg, var(--ink-2) 35%, var(--ink) 50%, var(--ink-2) 65%) 0 0 / 250% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: sheen 1.8s linear infinite;
+  }
+  /* A message, or a step, arriving. */
+  .msg-in { animation: msg-in .28s cubic-bezier(.2, .8, .2, 1) both; }
+
   /* ------------------------------------------------------------ loading */
   /* A placeholder in the shape of what's coming, with a light sweeping across it. */
   .skeleton {
@@ -344,6 +355,9 @@
 }
 
 @keyframes blink { 50% { opacity: 0; } }
+@keyframes caret-breathe { 0%, 100% { opacity: .3; transform: scale(.8); } 50% { opacity: .9; transform: scale(1); } }
+@keyframes sheen { from { background-position: 100% 0; } to { background-position: -50% 0; } }
+@keyframes msg-in { from { opacity: 0; transform: translateY(6px); } }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 @keyframes loading-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes breathe { 0%, 100% { opacity: .5; transform: scale(.94); } 50% { opacity: 1; transform: scale(1); } }
@@ -351,7 +365,8 @@
 @keyframes chip-in { from { opacity: 0; transform: translateY(-3px) scale(.96); } }
 @keyframes badge-pop { from { transform: scale(.4); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .caret::after, .skeleton, .breathe, .chip-in, .badge-pop { animation: none; }
+  .caret::after, .skeleton, .breathe, .chip-in, .badge-pop, .stream-caret, .msg-in { animation: none; }
+  .shimmer-text { animation: none; background: none; color: var(--ink-2); }
   .skeleton { background: var(--wash); }
 }
 

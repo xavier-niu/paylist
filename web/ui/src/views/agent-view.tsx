@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
 import { ArrowUpIcon, CheckIcon, ChevronRightIcon, FileTextIcon, HistoryIcon, PaperclipIcon, SparklesIcon, SquareIcon, SquarePenIcon, Trash2Icon, UploadIcon, XIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -67,6 +67,60 @@ function toItems(msgs: ChatMessage[]): Item[] {
   return items
 }
 
+const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+/**
+ * Text as it streams, let out at a steady pace rather than in the bursts it
+ * arrives in: a share of what's waiting each frame, so it never falls far
+ * behind. Text that isn't streaming (finished, or loaded) shows whole.
+ */
+function useSmoothText(text: string, live: boolean): string {
+  const [shown, setShown] = useState(live && !reducedMotion() ? 0 : text.length)
+  const at = useRef(shown)
+  // Once let out smoothly, it finishes so when the stream ends, rather than jumping to the end.
+  const smooth = useRef(live)
+  if (live) smooth.current = true
+  useEffect(() => {
+    if (!smooth.current || reducedMotion()) {
+      at.current = text.length
+      setShown(text.length)
+      return
+    }
+    let frame = 0
+    const tick = () => {
+      const goal = text.length
+      if (at.current >= goal) return
+      let next = Math.min(goal, at.current + Math.max(1, Math.ceil((goal - at.current) / 10)))
+      // Never between the halves of an emoji.
+      const c = text.charCodeAt(next - 1)
+      if (c >= 0xd800 && c <= 0xdbff && next < goal) next++
+      at.current = next
+      setShown(next)
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [text, live])
+  return text.slice(0, shown)
+}
+
+/** The cursor, put inside the reply's last block, right after its last word. */
+function withCaret(html: string): string {
+  const caret = '<span class="stream-caret" aria-hidden="true"></span>'
+  const m = html.match(/((?:<\/[a-z0-9]+>\s*)+)$/i)
+  return m ? html.slice(0, m.index) + caret + m[1] : html + caret
+}
+
+/** A reply of the agent's: let out smoothly while it streams, with the cursor after it. */
+function Reply({ text, streaming }: { text: string; streaming: boolean }) {
+  const shown = useSmoothText(text, streaming)
+  const html = useMemo(() => {
+    const h = renderMarkdown(shown)
+    return streaming ? withCaret(h) : h
+  }, [shown, streaming])
+  return <div className="prose-chat text-[14.5px]" dangerouslySetInnerHTML={{ __html: html }} />
+}
+
 /** A tool call the agent made, as a small pill; open it for what went in and came back. */
 function ToolLine({ call, result }: { call: ToolCall; result?: ToolResult }) {
   const [open, setOpen] = useState(false)
@@ -79,10 +133,10 @@ function ToolLine({ call, result }: { call: ToolCall; result?: ToolResult }) {
     /* plain text */
   }
   return (
-    <div className="min-w-0">
+    <div className="msg-in min-w-0">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={cn("pill soft !h-7 max-w-full !px-3 text-[13px]", failed && "!text-red")}>
-        {!result ? <Spinner className="size-3.5" /> : failed ? <XIcon className="!size-3.5" /> : <CheckIcon className="!size-3.5" />}
-        <span className="truncate">{!result ? running : failed ? t("{step}: failed", { step: done }) : done}</span>
+        {!result ? <Spinner className="size-3.5" /> : failed ? <XIcon className="badge-pop !size-3.5" /> : <CheckIcon className="badge-pop !size-3.5" />}
+        <span className={cn("truncate", !result && "shimmer-text")}>{!result ? running : failed ? t("{step}: failed", { step: done }) : done}</span>
         <ChevronRightIcon className={cn("!size-3.5 text-ink-2 transition-transform", open && "rotate-90")} />
       </button>
       {open && (
@@ -240,11 +294,20 @@ export function AgentView({ chatId }: { chatId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId])
 
-  // Follow the reply as it streams, unless the reader scrolled up.
+  // Follow the reply as it grows (chunk by chunk, and as it's let out), unless the reader scrolled up.
+  const contentRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = scrollRef.current
-    if (el && stickRef.current) el.scrollTop = el.scrollHeight
-  }, [items])
+    const inner = contentRef.current
+    if (!el || !inner) return
+    const follow = () => {
+      if (stickRef.current) el.scrollTop = el.scrollHeight
+    }
+    follow()
+    const ro = new ResizeObserver(follow)
+    ro.observe(inner)
+    return () => ro.disconnect()
+  }, [])
 
   const attach = async (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return
@@ -412,7 +475,7 @@ export function AgentView({ chatId }: { chatId: string }) {
         }}
         className="min-h-0 flex-1 overflow-y-auto"
       >
-        <div className="mx-auto grid max-w-[760px] grid-cols-[minmax(0,1fr)] gap-4 py-6">
+        <div ref={contentRef} className="mx-auto grid max-w-[760px] grid-cols-[minmax(0,1fr)] gap-4 py-6">
           {loading && (
             // A conversation's shape: a question on the right, an answer's lines on the left.
             <Loading className="grid gap-4">
@@ -442,7 +505,7 @@ export function AgentView({ chatId }: { chatId: string }) {
             switch (it.kind) {
               case "user":
                 return (
-                  <div key={i} className="grid justify-items-end gap-1.5">
+                  <div key={i} className="msg-in grid justify-items-end gap-1.5">
                     {it.files && it.files.length > 0 && (
                       <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
                         {it.files.map((f, j) =>
@@ -461,7 +524,7 @@ export function AgentView({ chatId }: { chatId: string }) {
                   </div>
                 )
               case "assistant":
-                return <div key={i} className={cn("prose-chat text-[14.5px]", running && i === items.length - 1 && "caret")} dangerouslySetInnerHTML={{ __html: renderMarkdown(it.text) }} />
+                return <Reply key={i} text={it.text} streaming={running && i === items.length - 1} />
               case "tool":
                 return <ToolLine key={i} call={it.call} result={it.result} />
               case "notice":
@@ -478,7 +541,12 @@ export function AgentView({ chatId }: { chatId: string }) {
                 )
             }
           })}
-          {thinking && <p className="caret text-[13px] text-ink-2">{t("Working")}</p>}
+          {thinking && (
+            <p className="msg-in flex items-center gap-2 text-[13.5px]" role="status">
+              <span className="stream-caret !ml-0" aria-hidden="true" />
+              <span className="shimmer-text">{t("Working")}</span>
+            </p>
+          )}
         </div>
       </div>
 
