@@ -338,8 +338,10 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "get_stats",
 		Description: "Spending statistics for a month (the current one by default): its total, count, daily average, " +
-			"every day's total, totals by type and by card, and the totals of the months before it. For month over month, compare " +
-			"to_date with prev_to_date: in the current month they cover day 1 to compare_day of each month; otherwise the whole months.",
+			"every day's total, totals by type and by card, the totals of the months before it, and each type's total in each of those months (type_monthly). " +
+			"For month over month, compare to_date with prev_to_date: in the current month they cover day 1 to compare_day of each month; otherwise the whole months. " +
+			"For what's unusual, compare to_date with avg_to_date, and by_type with type_avg: the average month over the avg_months months before, counted the same way. " +
+			"year has the month's year: its total and count, to_date against prev_to_date (up to compare_date, against the same day a year earlier, in the current year), every month of it and of the year before, and its totals by type.",
 		Annotations: &mcp.ToolAnnotations{Title: "Get statistics", ReadOnlyHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpStatsIn) (*mcp.CallToolResult, store.Stats, error) {
 		l, err := ledger(ctx, req, in.Ledger, false)
