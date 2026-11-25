@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -429,5 +430,74 @@ func TestLedgersMigration(t *testing.T) {
 	}
 	if opts, _ := st.ListOptions(ctx, 7); len(opts.Types) != 1 || opts.Types[0].Uses != 1 {
 		t.Errorf("options: %+v", opts)
+	}
+}
+
+func TestStatsTrends(t *testing.T) {
+	ctx := context.Background()
+	st, u := newStore(t)
+	L := personal(t, st, u)
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{
+		entry("Lunch", "Food", 30, "2025-03-02", ""),
+		entry("Bus", "Transport", 5, "2025-11-04", ""),
+		entry("Lunch", "Food", 40, "2025-11-08", ""),
+		entry("Lunch", "Food", 100, "2026-09-15", ""),
+		entry("Lunch", "Food", 60, "2026-10-03", ""),
+		entry("Dinner", "Food", 80, "2026-10-25", ""), // after the 10th: left out of last month to date
+		entry("Bus", "Transport", 7, "2026-10-04", ""),
+		entry("Lunch", "Food", 45, "2026-11-02", ""),
+		entry("Train", "Transport", 20, "2026-11-06", ""),
+		entry("Later", "Food", 10, "2026-11-20", ""), // after today
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := st.GetStats(ctx, L, "2026-11", 3, time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Each type over September to November, most spent first.
+	if len(s.TypeMonthly) != 2 || s.TypeMonthly[0].Name != "Food" || fmt.Sprint(s.TypeMonthly[0].Totals) != "[100 140 55]" || fmt.Sprint(s.TypeMonthly[1].Totals) != "[0 7 20]" {
+		t.Errorf("type monthly: %+v", s.TypeMonthly)
+	}
+	// This month by type up to today: the 20th's Food left out.
+	if len(s.ByTypeToDate) != 2 || s.ByTypeToDate[0].Name != "Food" || s.ByTypeToDate[0].Total != 45 || s.ByType[0].Total != 55 {
+		t.Errorf("by type to date: %+v (whole month %+v)", s.ByTypeToDate, s.ByType)
+	}
+	// The usual: the months since the first entry (Mar 2025), at most six,
+	// each up to the 10th: May to October 2026 hold Food 60 (Oct 3) and
+	// Transport 7 (Oct 4) up to then, so a usual month to date is 10 and 1.17.
+	avg := map[string]float64{}
+	for _, g := range s.TypeAvg {
+		avg[g.Name] = g.Total
+	}
+	if s.AvgMonths != 6 || s.AvgToDate != 11.17 || avg["Food"] != 10 || avg["Transport"] != 1.17 {
+		t.Errorf("usual: %d months, %v, %+v", s.AvgMonths, s.AvgToDate, s.TypeAvg)
+	}
+	// Early on, only the months since the first entry count, and a past
+	// month's are whole: May 2025's usual is March (30) and April (0).
+	may, _ := st.GetStats(ctx, L, "2025-05", 3, time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC))
+	if may.AvgMonths != 2 || may.AvgToDate != 15 || len(may.TypeAvg) != 1 || may.TypeAvg[0].Total != 15 {
+		t.Errorf("young usual: %d months, %v, %+v", may.AvgMonths, may.AvgToDate, may.TypeAvg)
+	}
+	// Nothing before the first entry: no usual yet.
+	mar, _ := st.GetStats(ctx, L, "2025-03", 3, time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC))
+	if mar.AvgMonths != 0 || len(mar.TypeAvg) != 0 {
+		t.Errorf("no usual: %+v", mar)
+	}
+	// The year: all of it, to date against the same day last year, month by month.
+	y := s.Year
+	if y.Year != 2026 || y.Total != 322 || y.Count != 7 || y.ToDate != 312 || y.PrevToDate != 75 || y.CompareDate != "2026-11-10" {
+		t.Errorf("year: %+v", y)
+	}
+	if len(y.Months) != 12 || y.Months[10].Total != 75 || y.Months[0].Month != "2026-01" || len(y.PrevMonths) != 12 || y.PrevMonths[10].Total != 45 || y.PrevMonths[2].Total != 30 {
+		t.Errorf("year months: %+v / %+v", y.Months, y.PrevMonths)
+	}
+	if len(y.ByType) != 2 || y.ByType[0].Name != "Food" || y.ByType[0].Total != 295 {
+		t.Errorf("year by type: %+v", y.ByType)
+	}
+	// A past year compares whole years.
+	past, _ := st.GetStats(ctx, L, "2025-11", 3, time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC))
+	if past.Year.CompareDate != "" || past.Year.ToDate != 75 || past.Year.PrevToDate != 0 {
+		t.Errorf("past year: %+v", past.Year)
 	}
 }
