@@ -115,7 +115,7 @@ func (s *Server) buildReport(ctx context.Context, u *store.User, l *store.Ledger
 		}
 		// Where to ask the agent about it.
 		if base := s.linkBase(ctx); base != "" {
-			rep.Text += "\n\n" + tr(lang, "Ask more", "继续提问") + "\n" + base + "/#/agent"
+			rep.Text += "\n\n" + tr(lang, "Ask more: ", "继续提问：") + base + "/#/agent"
 		}
 	}
 	return rep, nil
