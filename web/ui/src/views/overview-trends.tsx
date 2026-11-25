@@ -4,6 +4,7 @@ import { ColumnChart, Donut, Legend, Sparkline } from "@/components/charts"
 import { money, monthLabel, thisMonth, type Stats, type YearStats } from "@/lib/api"
 import { lang, t, tn } from "@/lib/i18n"
 import { Delta, Money } from "@/lib/money"
+import { INACTIVE_MONTHS } from "@/lib/options"
 import { cn } from "@/lib/utils"
 
 // The overview's trends: each type against its usual month, the months one
@@ -52,8 +53,8 @@ export function UsualCard({ stats, currency, onPickType }: { stats: Stats; curre
     return [...out.values()]
       .map((r) => ({ ...r, diff: Math.round((r.now - r.usual) * 100) / 100, spark: spark.get(r.name) ?? [] }))
       .filter((r) => r.now !== 0 || r.usual !== 0)
-      // A type unused for three months (this one and the two before) is left out: nothing to cut there.
-      .filter((r) => r.now !== 0 || r.spark.slice(-3).some((v) => v !== 0))
+      // An inactive type (nothing in the last twelve months, as the sparkline shows) is left out: nothing to cut there.
+      .filter((r) => r.now !== 0 || r.spark.slice(-INACTIVE_MONTHS).some((v) => v !== 0))
       .sort((a, b) => b.diff - a.diff || b.now - a.now)
   }, [stats])
   if (stats.avg_months === 0 || rows.length === 0) return null

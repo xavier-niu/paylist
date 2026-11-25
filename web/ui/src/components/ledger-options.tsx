@@ -4,7 +4,8 @@ import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { api, type Ledger, type Option, type Options } from "@/lib/api"
+import { api, dateLabel, type Ledger, type Option, type Options } from "@/lib/api"
+import { isInactive } from "@/lib/options"
 import { t, tn } from "@/lib/i18n"
 import { useApp } from "@/lib/state"
 import { cn } from "@/lib/utils"
@@ -37,6 +38,16 @@ export function LedgerOptions({ ledger }: { ledger: Ledger }) {
   )
 }
 
+/** "Inactive": no entry has it in the last twelve months; when it was last used, on hover. */
+function InactiveMark({ o }: { o: Option }) {
+  if (!isInactive(o)) return null
+  return (
+    <span className="rounded-full bg-wash px-2 py-0.5 text-[11.5px] text-ink-2" title={t("Last used {when}", { when: dateLabel(o.last_used!, { month: "short", day: "numeric", year: "numeric" }) })}>
+      {t("Inactive")}
+    </span>
+  )
+}
+
 function OptionRow({ o, ledgerID, colors, onChanged, onDelete, readOnly }: { o: Option; ledgerID: number; colors: string[]; onChanged: () => void; onDelete: () => void; readOnly: boolean }) {
   const [name, setName] = useState(o.name)
   useEffect(() => setName(o.name), [o.name])
@@ -58,6 +69,9 @@ function OptionRow({ o, ledgerID, colors, onChanged, onDelete, readOnly }: { o: 
           </span>
         </td>
         <td className="h-9 px-1.5 py-1 text-[14px]">{o.name}</td>
+        <td className="w-px py-1 pl-1 whitespace-nowrap">
+          <InactiveMark o={o} />
+        </td>
         <td className="figure w-14 py-1 text-right text-[12.5px] text-muted-foreground">{o.uses}</td>
         <td className="w-9" />
       </tr>
@@ -91,8 +105,11 @@ function OptionRow({ o, ledgerID, colors, onChanged, onDelete, readOnly }: { o: 
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
           aria-label={t("Rename {name}", { name: o.name })}
           maxLength={40}
-          className="h-8 w-full rounded-md bg-transparent px-1.5 text-[14px] outline-none hover:bg-wash focus:bg-sheet focus:shadow-[inset_0_0_0_1.5px_var(--ink)]"
+          className="h-8 w-full min-w-0 rounded-md bg-transparent px-1.5 text-[14px] outline-none hover:bg-wash focus:bg-sheet focus:shadow-[inset_0_0_0_1.5px_var(--ink)]"
         />
+      </td>
+      <td className="w-px py-1 pl-1 whitespace-nowrap">
+        <InactiveMark o={o} />
       </td>
       <td className="figure w-14 py-1 text-right text-[12.5px] text-muted-foreground">{o.uses}</td>
       <td className="w-9 py-1 text-right">
@@ -126,7 +143,7 @@ function OptionList({ kind, title, list, ledger, onChanged }: { kind: "type" | "
       <table className="w-full">
         <thead>
           <tr className="border-b border-rule">
-            <th className="label py-1.5 text-left font-normal" colSpan={2}>{title}</th>
+            <th className="label py-1.5 text-left font-normal" colSpan={3}>{title}</th>
             <th className="label py-1.5 text-right font-normal">{t("Used")}</th>
             <th />
           </tr>

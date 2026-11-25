@@ -3,7 +3,8 @@ import { CheckIcon } from "lucide-react"
 
 import { useConfirm } from "@/components/confirm"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { dateLabel, today, type Option } from "@/lib/api"
+import { dateLabel, type Option } from "@/lib/api"
+import { isInactive, sharesWord } from "@/lib/options"
 import { matches } from "@/lib/search"
 import { cn } from "@/lib/utils"
 import { t } from "@/lib/i18n"
@@ -18,17 +19,10 @@ export function Tag({ name, color, className }: { name: string; color: string; c
   )
 }
 
-/** The first day of the three months up to today: an option unused since is left out of the list. */
-function idleBefore(): string {
-  const d = new Date()
-  d.setMonth(d.getMonth() - 3)
-  return today(d)
-}
-
 /**
  * A dropdown cell for a type or card: pick an option, clear it, or type a new
  * name (which the server makes an option when the entry is saved). Options
- * unused for three months stay out of the list until a search finds them,
+ * unused for twelve months (inactive) stay out of the list until a search finds them,
  * after the others, so they're used again rather than made anew.
  */
 export function OptionSelect({
@@ -61,9 +55,8 @@ export function OptionSelect({
   const current = options.find((o) => o.name.toLowerCase() === value.toLowerCase())
   const q = query.trim().toLowerCase()
   const found = useMemo(() => {
-    const cutoff = idleBefore()
-    const idle = (o: Option) => o.uses > 0 && !!o.last_used && o.last_used < cutoff && o.name.toLowerCase() !== value.toLowerCase()
-    const hit = options.filter((o) => matches(o.name, q))
+    const idle = (o: Option) => isInactive(o) && o.name.toLowerCase() !== value.toLowerCase()
+    const hit = options.filter((o) => matches(o.name, q) || (idle(o) && sharesWord(o.name, q)))
     return q ? [...hit.filter((o) => !idle(o)), ...hit.filter(idle).map((o) => ({ ...o, idle: true }))] : hit.filter((o) => !idle(o))
   }, [options, q, value])
   const canCreate = q !== "" && !options.some((o) => o.name.toLowerCase() === q)

@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { dateLabel, type Entry, type LedgerOrder, type Option } from "@/lib/api"
 import { t } from "@/lib/i18n"
 import { matches } from "@/lib/search"
+import { isInactive } from "@/lib/options"
 import { cn } from "@/lib/utils"
 
 export type FilterField = "name" | "type" | "amount" | "date" | "card"
@@ -285,9 +286,10 @@ function FilterEditor({ filter: f, types, cards, month, onChange }: { filter: Fi
     }
     case "type":
     case "card": {
-      const list = [...(f.field === "type" ? types : cards).map((o) => ({ name: o.name, color: o.color })), { name: "", color: "gray" }]
-      const shown = list.filter((o) => !query.trim() || matches(o.name || t("None"), query))
       const values = f.values ?? []
+      // Inactive ones only when chosen already, or searched for.
+      const list = [...(f.field === "type" ? types : cards).filter((o) => !isInactive(o) || values.includes(o.name) || query.trim()).map((o) => ({ name: o.name, color: o.color })), { name: "", color: "gray" }]
+      const shown = list.filter((o) => !query.trim() || matches(o.name || t("None"), query))
       const toggle = (v: string) => onChange({ values: values.includes(v) ? values.filter((x) => x !== v) : [...values, v] })
       return (
         <>
