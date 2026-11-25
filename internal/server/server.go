@@ -102,6 +102,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/export.csv", s.withLedger(false, s.handleExportCSV))
 	mux.HandleFunc("GET /api/options", s.withLedger(false, s.handleListOptions))
 	mux.HandleFunc("POST /api/options", s.withLedger(true, s.handleCreateOption))
+	mux.HandleFunc("PUT /api/options/order", s.withLedger(true, s.handleReorderOptions))
 	mux.HandleFunc("PUT /api/options/{id}", s.withLedger(true, s.handleUpdateOption))
 	mux.HandleFunc("DELETE /api/options/{id}", s.withLedger(true, s.handleDeleteOption))
 	mux.HandleFunc("GET /api/stats", s.withLedger(false, s.handleStats))

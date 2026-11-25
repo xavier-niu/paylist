@@ -85,6 +85,24 @@ func TestEntriesAndOptions(t *testing.T) {
 		t.Errorf("Travel: %+v", o)
 	}
 
+	// Reordering: the cards, last first; a list missing one, or naming one twice or another's, is refused.
+	ids := []int64{}
+	for i := len(opts.Cards) - 1; i >= 0; i-- {
+		ids = append(ids, opts.Cards[i].ID)
+	}
+	if err := st.ReorderOptions(ctx, L, KindCard, ids); err != nil {
+		t.Fatal(err)
+	}
+	re, _ := st.ListOptions(ctx, L)
+	if re.Cards[0].ID != ids[0] || re.Cards[len(ids)-1].ID != ids[len(ids)-1] {
+		t.Errorf("reordered cards: %+v", re.Cards)
+	}
+	for _, bad := range [][]int64{ids[1:], append(ids, ids[0]), append(ids[1:], opts.Types[0].ID)} {
+		if err := st.ReorderOptions(ctx, L, KindCard, bad); err == nil {
+			t.Errorf("order %v accepted", bad)
+		}
+	}
+
 	// All or nothing.
 	if _, err := st.CreateEntries(ctx, L, []EntryInput{entry("ok", "", 1, "2026-11-02", ""), entry("bad", "", 1, "2026-13-02", "")}); err == nil {
 		t.Error("a bad date was accepted")

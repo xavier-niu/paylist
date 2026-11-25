@@ -270,3 +270,46 @@ func (s *Store) DeleteOption(ctx context.Context, ledgerID, id int64) (*Option, 
 	}
 	return o, cleared, tx.Commit()
 }
+
+// ReorderOptions puts a ledger's types (or cards) in the order of ids, which
+// must name each of them once: the order they're offered in everywhere.
+func (s *Store) ReorderOptions(ctx context.Context, ledgerID int64, kind string, ids []int64) error {
+	if kind != KindType && kind != KindCard {
+		return errors.New("kind must be type or card")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM options WHERE ledger_id = ? AND kind = ?`, ledgerID, kind)
+	if err != nil {
+		return err
+	}
+	have := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		have[id] = true
+	}
+	rows.Close()
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if !have[id] || seen[id] {
+			return errors.New("the order must list each of them once")
+		}
+		seen[id] = true
+	}
+	if len(seen) != len(have) {
+		return errors.New("the order must list each of them once")
+	}
+	for i, id := range ids {
+		if _, err := tx.ExecContext(ctx, `UPDATE options SET position = ? WHERE ledger_id = ? AND id = ?`, i, ledgerID, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}

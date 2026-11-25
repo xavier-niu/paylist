@@ -229,6 +229,27 @@ func (s *Server) handleUpdateOption(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, o)
 }
 
+// handleReorderOptions: {kind, ids}, the ledger's types (or cards) in their new order.
+func (s *Server) handleReorderOptions(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Kind string  `json:"kind"`
+		IDs  []int64 `json:"ids"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if err := s.opts.Store.ReorderOptions(r.Context(), currentLedger(r.Context()).ID, req.Kind, req.IDs); err != nil {
+		writeError(w, http.StatusBadRequest, sentence(err))
+		return
+	}
+	out, err := s.opts.Store.ListOptions(r.Context(), currentLedger(r.Context()).ID)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) handleDeleteOption(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "option")
 	if !ok {
