@@ -63,6 +63,13 @@ export function App() {
   const [loc, setLoc] = useState(readRoute)
   const [tableVersion, setTableVersion] = useState(0)
   const [menuOpen, setMenuOpen] = useState(false)
+  // The phone menu stays a moment after closing, to slide away.
+  const [menuShown, setMenuShown] = useState(false)
+  useEffect(() => {
+    if (menuOpen) return setMenuShown(true)
+    const id = setTimeout(() => setMenuShown(false), 200)
+    return () => clearTimeout(id)
+  }, [menuOpen])
   // Hiding the sidebar (from tablets up) is remembered on this browser.
   const [sideHidden, setSideHidden] = useState(() => {
     try {
@@ -421,19 +428,45 @@ export function App() {
       {/* --bar: the top bar's height, which pages that fill the screen (the agent) leave room for. */}
       <div className={cn("flex min-h-dvh [--bar:48px]", !sideHidden && "md:[--bar:0px]")} key={language}>
         {/* Sidebar, from tablets up, unless hidden */}
-        {!sideHidden && <aside className="sticky top-0 hidden h-dvh w-[272px] shrink-0 bg-side md:block">{sidebar}</aside>}
+        {/* From tablets up: the sidebar folds away to the left, and back. */}
+        <aside
+          inert={sideHidden}
+          className={cn(
+            "sticky top-0 hidden h-dvh shrink-0 overflow-hidden bg-side transition-[width] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none md:block",
+            sideHidden ? "w-0" : "w-[272px]",
+          )}
+        >
+          <div className={cn("h-full w-[272px] transition-[translate,opacity] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none", sideHidden && "-translate-x-8 opacity-0")}>{sidebar}</div>
+        </aside>
 
         {/* Phones: the same sidebar, slid in from the menu button */}
-        {menuOpen && (
-          <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label={t("Menu")}>
-            <button type="button" aria-label={t("Close the menu")} className="absolute inset-0 bg-black/30" onClick={go} />
-            <aside className="absolute inset-y-0 left-0 w-[284px] bg-side pt-[env(safe-area-inset-top,0px)] shadow-xl">{sidebar}</aside>
+        {(menuOpen || menuShown) && (
+          <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label={t("Menu")} inert={!menuOpen}>
+            <button
+              type="button"
+              aria-label={t("Close the menu")}
+              className={cn("absolute inset-0 bg-black/30 duration-200", menuOpen ? "animate-in fade-in-0" : "animate-out fade-out-0 fill-mode-forwards")}
+              onClick={go}
+            />
+            <aside
+              className={cn(
+                "absolute inset-y-0 left-0 w-[284px] bg-side pt-[env(safe-area-inset-top,0px)] shadow-xl duration-200 ease-out",
+                menuOpen ? "animate-in slide-in-from-left" : "animate-out slide-out-to-left fill-mode-forwards",
+              )}
+            >
+              {sidebar}
+            </aside>
           </div>
         )}
 
         <div className="flex min-w-0 flex-1 flex-col">
           {/* The top bar: on phones always; from tablets up only while the sidebar is hidden, to bring it back. */}
-          <header className={cn("sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-rule bg-paper px-3", !sideHidden && "md:hidden")}>
+          <header
+            className={cn(
+              "sticky top-0 z-30 flex h-12 items-center gap-2 overflow-hidden border-b border-rule bg-paper px-3 transition-[height,visibility] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none",
+              !sideHidden && "md:invisible md:h-0 md:border-b-0",
+            )}
+          >
             <button type="button" aria-label={t("Open the menu")} className="grid size-8 place-items-center rounded-md text-ink-2 hover:bg-wash md:hidden" onClick={() => setMenuOpen(true)}>
               <MenuIcon className="size-5" />
             </button>
