@@ -67,9 +67,16 @@ export interface Column {
   value: number
   detail?: string
   soft?: boolean // drawn in the de-emphasised step, so the current one stands out
+  /** The same period before (last year's month), drawn as a lighter column beside it. */
+  prev?: number
 }
 
-/** A single-series column chart with a hover tooltip (no legend: the card's title names it). */
+/**
+ * A column chart with a hover tooltip. One series needs no legend (the
+ * card's title names it); with `series`, each column has the period before
+ * beside it, lighter, and a legend names the two. `average` draws a dashed
+ * line across at that value.
+ */
 export function ColumnChart({
   data,
   height = 220,
@@ -77,6 +84,8 @@ export function ColumnChart({
   formatTick,
   onSelect,
   label,
+  series,
+  average,
 }: {
   data: Column[]
   height?: number
@@ -84,10 +93,13 @@ export function ColumnChart({
   formatTick: (v: number, compact: boolean) => string
   onSelect?: (key: string) => void
   label: string
+  /** The two series' names, when each column has the period before beside it. */
+  series?: [string, string]
+  average?: { value: number; label: string }
 }) {
   const [ref, width] = useWidth<HTMLDivElement>()
   const [hover, setHover] = useState<number | null>(null)
-  const values = data.map((d) => d.value)
+  const values = [...data.map((d) => d.value), ...(series ? data.map((d) => d.prev ?? 0) : []), average?.value ?? 0]
   const ticks = niceTicks(Math.min(0, ...values), Math.max(0, ...values))
   const lo = ticks[0]
   const hi = ticks[ticks.length - 1]
@@ -97,7 +109,7 @@ export function ColumnChart({
   const plotW = Math.max(0, width - pad.left - pad.right)
   const plotH = height - pad.top - pad.bottom
   const band = data.length ? plotW / data.length : 0
-  const barW = Math.max(2, Math.min(24, band - 2))
+  const barW = series ? Math.max(2, Math.min(14, (band - 4) / 2)) : Math.max(2, Math.min(24, band - 2))
   // Leave labels out where they'd collide, always keeping the last (current) one.
   const longest = Math.max(1, ...data.map((d) => d.tick.length))
   const tickEvery = Math.max(1, Math.ceil((longest * 6.5 + 8) / (band || 1)))
@@ -116,9 +128,23 @@ export function ColumnChart({
             </g>
           ))}
           {hover !== null && <rect className="hover-band" x={pad.left + band * hover} y={pad.top} width={band} height={plotH} />}
+          {series &&
+            data.map((d, i) => (
+              // The period before, on the left of the pair.
+              <path key={"p" + d.key} className="bar prev" d={columnPath(pad.left + band * i + band / 2 - barW - 1, barW, y0, y(d.prev ?? 0))} />
+            ))}
           {data.map((d, i) => (
-            <path key={d.key} className={cn("bar", d.soft && hover !== i && "soft")} d={columnPath(pad.left + band * i + (band - barW) / 2, barW, y0, y(d.value))} />
+            <path
+              key={d.key}
+              className={cn("bar", d.soft && hover !== i && "soft")}
+              d={columnPath(series ? pad.left + band * i + band / 2 + 1 : pad.left + band * i + (band - barW) / 2, barW, y0, y(d.value))}
+            />
           ))}
+          {average && average.value > 0 && (
+            <g>
+              <line className="avg" x1={pad.left} x2={width - pad.right} y1={Math.round(y(average.value)) + 0.5} y2={Math.round(y(average.value)) + 0.5} />
+            </g>
+          )}
           {data.map((d, i) =>
             d.tick && (data.length - 1 - i) % tickEvery === 0 ? (
               <text key={d.key} x={pad.left + band * i + band / 2} y={height - 6} textAnchor="middle">{d.tick}</text>
@@ -131,12 +157,56 @@ export function ColumnChart({
         </svg>
       )}
       {h && (
-        <Tooltip x={pad.left + band * hover! + band / 2} y={y(Math.max(h.value, 0))} width={width}>
-          <div className="figure text-[13px] font-semibold text-foreground">{format(h.value)}</div>
-          <div className="text-muted-foreground">{h.label}{h.detail ? ` · ${h.detail}` : ""}</div>
+        <Tooltip x={pad.left + band * hover! + band / 2} y={y(Math.max(h.value, h.prev ?? 0, 0))} width={width}>
+          {series ? (
+            <>
+              <div className="text-muted-foreground">{h.label}</div>
+              <div className="flex items-center gap-2"><span className="size-2 rounded-[2px] bg-[var(--viz-series)]" /><span className="figure font-semibold text-foreground">{format(h.value)}</span><span className="text-muted-foreground">{series[0]}</span></div>
+              <div className="flex items-center gap-2"><span className="size-2 rounded-[2px] bg-[var(--viz-context)]" /><span className="figure font-semibold text-foreground">{format(h.prev ?? 0)}</span><span className="text-muted-foreground">{series[1]}</span></div>
+            </>
+          ) : (
+            <>
+              <div className="figure text-[13px] font-semibold text-foreground">{format(h.value)}</div>
+              <div className="text-muted-foreground">{h.label}{h.detail ? ` · ${h.detail}` : ""}</div>
+            </>
+          )}
         </Tooltip>
       )}
     </div>
+  )
+}
+
+/** The legend over a chart: each series' swatch and name. */
+export function Legend({ items }: { items: { label: string; swatch: "series" | "context" | "average" }[] }) {
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-4 text-[12px] text-ink-2">
+      {items.map((it) => (
+        <span key={it.label} className="flex items-center gap-1.5">
+          {it.swatch === "average" ? (
+            <span className="w-4 border-t-[1.5px] border-dashed border-[var(--viz-context)]" />
+          ) : (
+            <span className={cn("size-2.5 rounded-[2px]", it.swatch === "series" ? "bg-[var(--viz-series)]" : "bg-[var(--viz-context)]")} />
+          )}
+          {it.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/** A month-by-month line too small for axes: its shape, with the last month marked. */
+export function Sparkline({ values, label, width = 84, height = 22 }: { values: number[]; label: string; width?: number; height?: number }) {
+  if (values.length < 2) return null
+  const lo = Math.min(0, ...values)
+  const hi = Math.max(...values)
+  const x = (i: number) => 2 + (i / (values.length - 1)) * (width - 4)
+  const y = (v: number) => 2 + (height - 4) * (1 - (v - lo) / (hi - lo || 1))
+  const last = values.length - 1
+  return (
+    <svg className="viz block shrink-0" width={width} height={height} role="img" aria-label={label}>
+      <polyline className="spark" points={values.map((v, i) => `${x(i)},${y(v)}`).join(" ")} />
+      <circle className="spark-dot" cx={x(last)} cy={y(values[last])} r={2.5} />
+    </svg>
   )
 }
 

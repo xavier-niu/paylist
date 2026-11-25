@@ -294,6 +294,10 @@
   .viz .baseline { stroke: var(--viz-axis); stroke-width: 1; shape-rendering: crispEdges; }
   .viz .bar { fill: var(--viz-series); }
   .viz .bar.soft { fill: var(--viz-soft); }
+  .viz .bar.prev { fill: var(--viz-context); }
+  .viz .avg { stroke: var(--viz-context); stroke-width: 1.5; stroke-dasharray: 4 3; shape-rendering: crispEdges; }
+  .viz .spark { fill: none; stroke: var(--viz-context); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+  .viz .spark-dot { fill: var(--viz-series); stroke: var(--sheet); stroke-width: 1.5; }
   .viz .hit { fill: transparent; }
   .viz .hover-band { fill: var(--wash); }
   .viz .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }

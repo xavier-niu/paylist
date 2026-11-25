@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
-import { CalendarHeat, ColumnChart, Donut, PaceChart, type DonutPick } from "@/components/charts"
+import { CalendarHeat, Donut, PaceChart, type DonutPick } from "@/components/charts"
 import { EntryList } from "@/components/entry-list"
 import { MonthSwitch, PageHeader } from "@/components/month-picker"
 import { Loading, Skeleton } from "@/components/ui/skeleton"
@@ -10,6 +10,7 @@ import { Delta, Money } from "@/lib/money"
 import { useApp } from "@/lib/state"
 import { t, tn } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
+import { MonthlyCard, UsualCard, YearCard } from "@/views/overview-trends"
 
 /** A part of a chart whose entries are listed: a day (key: its date), or a type or card (key: the donut's). */
 type Pick = { kind: "day" | "type" | "card"; key: string; names: string[]; label: string; color?: string }
@@ -111,6 +112,17 @@ export function OverviewView() {
                   <>{t("Nothing recorded in {when}", { when: compareLabel(stats) })}</>
                 )}
               </div>
+              {stats.avg_months > 0 && stats.avg_to_date > 0 && (
+                <div className="mt-1 flex min-h-[22px] items-center gap-2 text-[13.5px] text-ink-2">
+                  {t("Compared with usual")}
+                  <Delta
+                    now={stats.to_date}
+                    before={stats.avg_to_date}
+                    currency={currency}
+                    title={stats.compare_day ? tn(stats.avg_months, "The month before, days 1–{d}", "The average of the {n} months before, days 1–{d} of each", { d: stats.compare_day }) : tn(stats.avg_months, "The month before", "The average of the {n} months before")}
+                  />
+                </div>
+              )}
               <div className="mt-4">
                 <PaceChart
                   current={pace.current}
@@ -158,27 +170,14 @@ export function OverviewView() {
             </div>
           </section>
 
+          {/* Each type against its usual month: where the spending grew */}
+          <UsualCard stats={stats} currency={currency} onPickType={(name, color) => setPick({ kind: "type", key: name, names: [name], label: name || t("No type"), color: name ? color : "gray" })} />
+
           {/* Month by month */}
-          <section className="card p-6 sm:p-7">
-            <h2 className="card-title">{t("Monthly spending")}</h2>
-            <div className="mt-4">
-              <ColumnChart
-                label={t("Spending in each of the last twelve months")}
-                height={220}
-                data={stats.monthly.map((m) => ({
-                  key: m.month,
-                  tick: monthLabel(m.month, "short"),
-                  label: monthLabel(m.month),
-                  value: m.total,
-                  detail: tn(m.count, "{n} entry", "{n} entries"),
-                  soft: m.month !== month,
-                }))}
-                format={fmt}
-                formatTick={fmtTick}
-                onSelect={setMonth}
-              />
-            </div>
-          </section>
+          <MonthlyCard stats={stats} month={month} currency={currency} onSelect={setMonth} />
+
+          {/* The year against the one before */}
+          <YearCard year={stats.year} currency={currency} onSelect={setMonth} />
         </div>
       )}
       {pick && list(pick)}

@@ -139,6 +139,28 @@ export interface Stats {
   by_type: GroupTotal[]
   by_card: GroupTotal[]
   monthly: MonthTotal[]
+  /** Each type over the same months as `monthly`. */
+  type_monthly: { name: string; color: string; totals: number[] }[]
+  /** The usual: the average month over the `avg_months` months before, counted like `to_date`. */
+  avg_months: number
+  avg_to_date: number
+  type_avg: GroupTotal[]
+  /** `by_type` counted like `to_date`. */
+  by_type_to_date: GroupTotal[]
+  year: YearStats
+}
+
+/** A year, against the year before: up to `compare_date` in the current year, whole years otherwise. */
+export interface YearStats {
+  year: number
+  total: number
+  count: number
+  to_date: number
+  prev_to_date: number
+  compare_date: string
+  months: MonthTotal[]
+  prev_months: MonthTotal[]
+  by_type: GroupTotal[]
 }
 
 export interface MonthTotal {
