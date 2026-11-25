@@ -198,7 +198,7 @@ func TestReportByModel(t *testing.T) {
 	if len(asked) != 2 {
 		t.Fatalf("asked the model %d times, want 2", len(asked))
 	}
-	for _, fact := range []string{"Simplified Chinese", "much higher than usual", "¥7.70", "Personal", "types_lower_than_usual_this_month_so_far", "spent_by_type", "50 to 100 words", `"name":"list_entries"`, `"name":"get_stats"`} {
+	for _, fact := range []string{"Simplified Chinese", "much higher than usual", "¥7.70", "Personal", "types_lower_than_usual_this_month_so_far", "spent_by_type", "50 to 100 words", "the 28 days before", "for today and the rest of the month", `"name":"list_entries"`, `"name":"get_stats"`} {
 		if !strings.Contains(asked[0], fact) {
 			t.Errorf("the model wasn't told %q", fact)
 		}
@@ -244,6 +244,22 @@ func TestLinkBase(t *testing.T) {
 	}
 	if b := New(Options{Store: e.st, PublicURL: "https://pay.example.com/"}).linkBase(t.Context()); b != "https://pay.example.com" {
 		t.Errorf("with PAYLIST_PUBLIC_URL: %q", b)
+	}
+}
+
+// Each kind of report has instructions of its own, with the rules all share.
+func TestSuggestPrompts(t *testing.T) {
+	for period, want := range map[string]string{
+		store.ReportDaily:   "about 50 to 100 words",
+		store.ReportWeekly:  "about 80 to 150 words",
+		store.ReportMonthly: "about 100 to 200 words",
+	} {
+		p := suggestPrompt(period, "zh")
+		for _, part := range []string{want, "# The report", "# What to write", "# How to find out", "# Rules", "Write in Simplified Chinese.", "spent_by_type"} {
+			if !strings.Contains(p, part) {
+				t.Errorf("%s: no %q", period, part)
+			}
+		}
 	}
 }
 

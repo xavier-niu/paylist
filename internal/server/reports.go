@@ -379,17 +379,77 @@ func writeReport(rep *report, lang string) string {
 	return strings.Join(sections, "\n\n")
 }
 
-const suggestPrompt = `Paylist, a personal spending tracker, sends its user a note on what one of their ledgers spent over a period against what it usually does. You get the note's figures as JSON, with "note": the note itself, which the user reads just before your words.
+// The model's instructions for its paragraph: what every report shares
+// (who reads it, its figures, the rules), and, for each kind of report, what
+// it covers, what to write and how to find out (suggestPrompts).
+const (
+	suggestIntro = `You add a short paragraph to a spending report from Paylist, a personal spending tracker. The user reads the report in a chat app on their phone; your words come right after it, under "✨ AI suggestion".`
 
-Add a short paragraph, about 50 to 100 words (a guide, not a limit), in two parts.
+	suggestFigures = `You get the report's figures as JSON. "note" is the report as the user sees it. "spent" and "usual" are the period's total and its usual one. The types_higher_than_usual and types_lower_than_usual lists are the types well above or below their usual. "spent_by_type" is the period's spending by type, and "from" and "to" are its dates. Amounts are in the ledger's currency; a negative one is money back, such as a refund.`
 
-First, what was unusual: what went well above or below the usual, the types that rose or fell (types_higher_than_usual, types_lower_than_usual) and the period as a whole when it was far off. For what matters most, say what is behind it, such as one large purchase, many small ones, or something new. Leave out what was ordinary; if nothing was unusual, say so in a few words.
+	suggestRules = `# Rules
 
-Then, one or two concrete suggestions for next %s that would keep its spending below its usual, or at least at it: tied to what you found, such as a type to hold to its usual amount, a kind of purchase to skip or put off, or a habit that kept a type low to keep up. No generic tips.
+- Use only what the figures and the tools show. You may name entries and their amounts, and a type's usual amount; don't restate the report's totals and percentages, and never make up a number.
+- The tools only read the ledger; without "ledger" they use the report's.
+- Keep the user's names for types and entries exactly as they are, whatever language they're in.
+- Leave out what was ordinary, and give nothing generic, such as "make a budget" or "track your spending".
+- Be plain and kind, like a friend who is good with money: no judgment, no exclamation marks.
+- Your last message is the paragraph and nothing else: plain text, no greeting, no heading, no list, no markdown, no emoji. Write in %s.`
+)
 
-Look into the ledger first with the tools, which only read it (the ledger is the one named; leave "ledger" out to use it): list_entries, by type and dates, shows the entries behind a type that rose or fell; get_stats and list_months show the months before. Look only as far as helps, a few calls at most, then write. Ground what you say in what you saw, naming the types and entries; don't list the note's figures again, and don't invent any.
+// suggestPrompts are, for each kind of report, what it covers, what to write
+// about it and how to find that out.
+var suggestPrompts = map[string]string{
+	store.ReportDaily: `# The report
 
-Your last reply is the paragraph itself. Plain text: one paragraph, no greeting, no heading, no markdown, no emoji. Write in %s.`
+A daily report: what was spent yesterday, against a usual day (the average of the 28 days before it); then the month so far, against what the months before had spent by the same day. Its types are the month so far's against their usual by then (types_higher_than_usual_this_month_so_far and types_lower_than_usual_this_month_so_far), as a single day is too little to judge a type by.
+
+# What to write
+
+One paragraph, about 50 to 100 words (a guide, not a limit). A day is noisy, as one dinner out can double it, so read yesterday together with the month so far:
+
+1. What stands out: yesterday, if it was far from a usual day, and what it went on; and the type pulling the month furthest from its usual, in money, and what is behind it (one large purchase, a run of small ones, something new).
+2. One concrete step for today and the rest of the month that would bring the month back to its usual, or keep it below: tied to what you found, such as a type to go easy on or a purchase to put off. If the month is on track, say so and what keeps it there.
+
+# How to find out
+
+list_entries with yesterday's date shows what was bought; with a type and the month's dates so far, what is driving the month. One or two calls are usually enough; then write.`,
+
+	store.ReportWeekly: `# The report
+
+A weekly report, sent on Monday: what was spent last week (Monday to Sunday), overall and by type, against a usual week (the average of up to 8 weeks before). Types that come and go, such as rent paid once a month, are left out of the types compared.
+
+# What to write
+
+One paragraph, about 80 to 150 words (a guide, not a limit):
+
+1. What was unusual last week, and why: the one or two types that moved most in money, and what is behind each (one large purchase, a run of small ones, something new, or something that usually happens and didn't). Note a pattern within the week when there is one, such as most of it at the weekend or the same place again and again.
+2. One or two concrete steps for this week that would keep its spending at or below a usual week: tied to what you found, such as holding a type to about its usual amount or putting off a purchase like the one that stood out. If last week was below usual, say what to keep doing.
+
+# How to find out
+
+list_entries with last week's dates, and a type, shows the entries behind a change; the same for the weeks before tells a one-off from a trend. Two or three calls are usually enough; then write.`,
+
+	store.ReportMonthly: `# The report
+
+A monthly report, sent on the 1st: what was spent last month, overall and by type, against a usual month (the average of up to 6 months before).
+
+# What to write
+
+One paragraph, about 100 to 200 words (a guide, not a limit). A month is long enough to show habits:
+
+1. What was unusual last month, and why: the types that moved most in money, and what is behind each (one large purchase, a run of small ones, something new, a regular cost that grew, or something that usually happens and didn't). Say whether each is a one-off or part of a trend over the months before.
+2. A short plan for this month, one to three concrete steps that would keep its spending at or below a usual month: tied to what you found, such as a type to hold to about its usual amount, a regular cost to look at again, or a purchase to put off. If last month was below usual, say what made it so and how to keep it.
+
+# How to find out
+
+get_stats for last month shows each type month by month (type_monthly), to tell a trend from a one-off; list_entries with a type and last month's dates shows the entries behind a change. Three or four calls are usually enough; then write.`,
+}
+
+// suggestPrompt is the model's instructions for a kind of report, in lang.
+func suggestPrompt(period, lang string) string {
+	return suggestIntro + "\n\n" + suggestPrompts[period] + "\n\n" + suggestFigures + "\n\n" + fmt.Sprintf(suggestRules, tr(lang, "English", "Simplified Chinese"))
+}
 
 // suggest has the user's AI model suggest what to do about a ledger's
 // report, looking into the ledger with the MCP tools that read it; "" when
@@ -411,8 +471,7 @@ func (s *Server) suggest(ctx context.Context, u *store.User, l *store.Ledger, re
 	f["note"] = rep.Text
 	f["today"] = time.Now().Format("2006-01-02")
 	facts, _ := json.Marshal(f)
-	unit := map[string]string{store.ReportDaily: "day", store.ReportWeekly: "week", store.ReportMonthly: "month"}[rep.Period]
-	system := fmt.Sprintf(suggestPrompt, unit, tr(lang, "English", "Simplified Chinese"))
+	system := suggestPrompt(rep.Period, lang)
 	history, err := agent.Run(ctx, client, session, system, []llm.Message{{Role: "user", Text: string(facts)}}, func(agent.Event) error { return nil }, nil)
 	if err != nil {
 		s.opts.Logger.Warn("report: the model failed; sending it without a suggestion", "user", u.ID, "err", err)
@@ -424,7 +483,7 @@ func (s *Server) suggest(ctx context.Context, u *store.User, l *store.Ledger, re
 		return ""
 	}
 	// Its length is the model's to judge; this only stops a runaway.
-	return cut(strings.Join(strings.Fields(last.Text), " "), 2000)
+	return cut(strings.Join(strings.Fields(last.Text), " "), 4000)
 }
 
 // reportFacts are the figures the model writes from, amounts written out.
