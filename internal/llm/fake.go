@@ -11,12 +11,16 @@ import (
 )
 
 // fakeClient stands in for a model in demos and tests (PAYLIST_DEV_FAKE=1). It
-// understands one command, "add <name> <amount> [type] [card]", which it turns
-// into an add_entries call; anything else gets this month's statistics through
-// get_stats. After a tool call it shows the result.
+// understands "add <name> <amount> [type] [card]", which it turns into an
+// add_entries call, and "wait <seconds>", which takes that long to answer (a
+// slow model, to watch a turn run on); anything else gets this month's
+// statistics through get_stats. After a tool call it shows the result.
 type fakeClient struct{}
 
-var fakeAddRe = regexp.MustCompile(`(?i)^\s*add\s+(.+?)\s+(-?\d+(?:\.\d+)?)(?:\s+(\S+))?(?:\s+(\S+))?\s*$`)
+var (
+	fakeAddRe  = regexp.MustCompile(`(?i)^\s*add\s+(.+?)\s+(-?\d+(?:\.\d+)?)(?:\s+(\S+))?(?:\s+(\S+))?\s*$`)
+	fakeWaitRe = regexp.MustCompile(`(?i)^\s*wait\s+(\d{1,2})\s*$`)
+)
 
 func (fakeClient) Step(ctx context.Context, _ string, msgs []Message, tools []Tool, onText func(string) error) (Message, Stop, error) {
 	if len(msgs) == 0 {
@@ -67,6 +71,24 @@ func (fakeClient) Step(ctx context.Context, _ string, msgs []Message, tools []To
 	case "user":
 		if n := len(last.Attachments); n > 0 {
 			return say(fmt.Sprintf("I got %d file(s), but the demo model can't read files. Connect a real model in Settings and it will read them.", n))
+		}
+		if m := fakeWaitRe.FindStringSubmatch(last.Text); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			n = min(n, 60)
+			var b strings.Builder
+			for i := 1; i <= n; i++ {
+				select {
+				case <-ctx.Done():
+					return Message{Role: "assistant", Provider: "fake", Text: b.String()}, "", ctx.Err()
+				case <-time.After(time.Second):
+				}
+				word := fmt.Sprintf("%d… ", i)
+				b.WriteString(word)
+				if err := onText(word); err != nil {
+					return Message{}, "", err
+				}
+			}
+			return say(fmt.Sprintf("Waited %d seconds.", n))
 		}
 		if m := fakeAddRe.FindStringSubmatch(last.Text); m != nil {
 			amount, _ := strconv.ParseFloat(m[2], 64)
