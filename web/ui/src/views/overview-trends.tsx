@@ -52,6 +52,8 @@ export function UsualCard({ stats, currency, onPickType }: { stats: Stats; curre
     return [...out.values()]
       .map((r) => ({ ...r, diff: Math.round((r.now - r.usual) * 100) / 100, spark: spark.get(r.name) ?? [] }))
       .filter((r) => r.now !== 0 || r.usual !== 0)
+      // A type unused for three months (this one and the two before) is left out: nothing to cut there.
+      .filter((r) => r.now !== 0 || r.spark.slice(-3).some((v) => v !== 0))
       .sort((a, b) => b.diff - a.diff || b.now - a.now)
   }, [stats])
   if (stats.avg_months === 0 || rows.length === 0) return null
