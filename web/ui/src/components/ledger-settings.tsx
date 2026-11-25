@@ -147,7 +147,7 @@ function LedgerSettings({ ledger }: { ledger: Ledger }) {
           <span className="label">{t("People")}</span>
           <ul className="grid">
             {(members ?? []).map((m) => (
-              <li key={m.user_id} className="flex min-h-11 items-center gap-3 border-b border-rule py-1.5 last:border-b-0">
+              <li key={m.user_id} className="flex min-h-11 items-center gap-3 border-b border-rule py-1.5 pl-1.5 last:border-b-0">
                 <span className="grid min-w-0 flex-1">
                   <span className="truncate text-[14px] font-medium">
                     {m.name || m.email}
