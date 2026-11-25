@@ -401,6 +401,9 @@ export function EntryDialog({
     }
   }
 
+  // The key a button answers to, beside its name; not on a touch screen.
+  const keyHint = "ml-0.5 tracking-[0.08em] [@media(hover:none)]:hidden"
+
   // Labels on one line.
   const row = "grid grid-cols-[120px_minmax(0,1fr)] items-center gap-2 min-h-[34px]"
   const name_ = "flex items-center gap-1.5 whitespace-nowrap text-[14px] text-muted-foreground [&_svg]:size-4 [&_svg]:shrink-0"
@@ -644,10 +647,13 @@ export function EntryDialog({
             <span className="flex-1" />
             <button type="button" className="btn ghost" onClick={() => onOpenChange(false)}>
               {entry || !added.some((e) => !e.deleted) ? t("Cancel") : t("Done")}
+              {/* Changing an entry, Esc saves it; elsewhere it closes the form. */}
+              {!entry && <kbd className={keyHint}>Esc</kbd>}
             </button>
             <button type="submit" title="Shift+Enter" className={cn("btn", refund && picked && !partial && !locked && "danger")} disabled={!ready || busy || (refund && !matchesReady)}>
               {busy && <Spinner className="size-3.5" />}
               {refund ? (picked ? (partial ? t("Refund part") : locked ? t("Refund") : t("Delete purchase")) : t("Add refund")) : entry ? t("Save") : t("Add")}
+              <kbd className={cn(keyHint, refund && picked && !partial && !locked ? "" : "!bg-paper/15 !text-paper/75")} aria-label="Shift+Enter">⇧↵</kbd>
             </button>
           </div>
           {!entry && added.length > 0 && (
