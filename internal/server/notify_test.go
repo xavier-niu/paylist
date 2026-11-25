@@ -191,7 +191,7 @@ func TestReportByModel(t *testing.T) {
 	rep, err := s.buildReport(t.Context(), u, &ls[0], store.ReportDaily, "zh", true, today)
 	want := "交通是本月新出现的支出，主要是 Train 和 Taxi。"
 	if err != nil || rep.Suggestion != want || !strings.HasPrefix(rep.Text, "昨天（11月24日 周二）\n  合计 ¥100.00") ||
-		!strings.HasSuffix(rep.Text, "\n\n✨ AI 建议\n"+want+"\n\n继续提问：https://pay.example.com/#/agent") {
+		!strings.HasSuffix(rep.Text, "\n\n✨ AI 建议\n"+want+"\n\n继续提问\nhttps://pay.example.com/#/agent") {
 		t.Fatalf("with a suggestion: %v %+v", err, rep)
 	}
 	mu.Lock()
@@ -222,7 +222,7 @@ func TestReportByModel(t *testing.T) {
 		t.Error("a model, not ready")
 	}
 	if rep, _ = s.buildReport(t.Context(), u, &ls[0], store.ReportDaily, "zh", true, today); rep.Suggestion != "" || !strings.HasPrefix(rep.Text, "昨天（11月24日 周二）\n  合计 ¥100.00") || strings.Contains(rep.Text, "✨") ||
-		!strings.HasSuffix(rep.Text, "\n\n继续提问：https://pay.example.com/#/agent") {
+		!strings.HasSuffix(rep.Text, "\n\n继续提问\nhttps://pay.example.com/#/agent") {
 		t.Errorf("the model failing (the link stays): %+v", rep)
 	}
 }
