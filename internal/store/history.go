@@ -45,7 +45,9 @@ type EntryEvent struct {
 	Action  string           `json:"action"`
 	Changes map[string][]any `json:"changes,omitempty"`
 	UserID  int64            `json:"user_id,omitempty"`
-	By      string           `json:"by"` // their name, or email; "" when the account is gone or unknown
+	By      string           `json:"by"`                 // their name, or email; "" when the account is gone or unknown
+	ByName  string           `json:"by_name,omitempty"`  // their name (unique), when they have one
+	ByEmail string           `json:"by_email,omitempty"` // their email
 	Via     string           `json:"via,omitempty"`
 	At      string           `json:"at"`
 }
@@ -93,7 +95,7 @@ func (s *Store) EntryHistory(ctx context.Context, ledgerID, entryID int64) ([]En
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT ev.id, ev.action, ev.changes, COALESCE(ev.user_id, 0),
-			COALESCE(NULLIF(u.name, ''), u.email, ''), ev.via, ev.created_at
+			COALESCE(NULLIF(u.name, ''), u.email, ''), COALESCE(u.name, ''), COALESCE(u.email, ''), ev.via, ev.created_at
 		FROM entry_events ev LEFT JOIN users u ON u.id = ev.user_id
 		WHERE ev.entry_id = ? ORDER BY ev.id`, entryID)
 	if err != nil {
@@ -104,7 +106,7 @@ func (s *Store) EntryHistory(ctx context.Context, ledgerID, entryID int64) ([]En
 	for rows.Next() {
 		var ev EntryEvent
 		var changes string
-		if err := rows.Scan(&ev.ID, &ev.Action, &changes, &ev.UserID, &ev.By, &ev.Via, &ev.At); err != nil {
+		if err := rows.Scan(&ev.ID, &ev.Action, &changes, &ev.UserID, &ev.By, &ev.ByName, &ev.ByEmail, &ev.Via, &ev.At); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(changes), &ev.Changes)

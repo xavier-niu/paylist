@@ -157,7 +157,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	u, err := s.opts.Store.CreateUser(r.Context(), req.Email, req.Name, req.Password, req.IsAdmin)
 	if err != nil {
 		status := http.StatusBadRequest
-		if errors.Is(err, store.ErrEmailTaken) {
+		if errors.Is(err, store.ErrEmailTaken) || errors.Is(err, store.ErrNameTaken) {
 			status = http.StatusConflict
 		}
 		writeError(w, status, sentence(err))
@@ -262,4 +262,41 @@ func (s *Server) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleSetName: {name}, the user's own name (unique; empty shows the email).
+func (s *Server) handleSetName(w http.ResponseWriter, r *http.Request) {
+	s.setName(w, r, currentUser(r.Context()).ID)
+}
+
+// handleSetUserName: {name}, an admin naming an account.
+func (s *Server) handleSetUserName(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathUserID(w, r)
+	if !ok {
+		return
+	}
+	if _, err := s.opts.Store.GetUser(r.Context(), id); err != nil {
+		writeError(w, http.StatusNotFound, "No such account.")
+		return
+	}
+	s.setName(w, r, id)
+}
+
+func (s *Server) setName(w http.ResponseWriter, r *http.Request, userID int64) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	u, err := s.opts.Store.SetUserName(r.Context(), userID, req.Name)
+	if errors.Is(err, store.ErrNameTaken) {
+		writeError(w, http.StatusConflict, sentence(err))
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, sentence(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, u)
 }

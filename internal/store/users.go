@@ -127,6 +127,9 @@ func (s *Store) createUser(ctx context.Context, email, name, password string, ad
 	res, err := s.db.ExecContext(ctx, q, email, name, string(hash), admin, ts, ts)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
+			if strings.Contains(err.Error(), "users.name") {
+				return nil, ErrNameTaken
+			}
 			return nil, ErrEmailTaken
 		}
 		return nil, err
@@ -322,3 +325,24 @@ func (s *Store) PurgeExpiredSessions(ctx context.Context) error {
 // FastHashesForTests lowers the bcrypt cost so tests that create accounts run
 // quickly. Never call it outside tests.
 func FastHashesForTests() { bcryptCost = bcrypt.MinCost }
+
+// maxUserName is the longest a person's name may be.
+const maxUserName = 60
+
+// SetUserName changes a person's name, which is how others see them (in an
+// entry's history, a shared ledger's people). Names are unique, ignoring
+// case; an empty one goes back to showing the email.
+func (s *Store) SetUserName(ctx context.Context, userID int64, name string) (*User, error) {
+	name = strings.Join(strings.Fields(name), " ")
+	if utf8.RuneCountInString(name) > maxUserName {
+		return nil, fmt.Errorf("names are at most %d characters", maxUserName)
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET name = ?, updated_at = ? WHERE id = ?`, name, now(), userID)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return nil, ErrNameTaken
+		}
+		return nil, err
+	}
+	return s.GetUser(ctx, userID)
+}

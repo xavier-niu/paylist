@@ -745,3 +745,62 @@ func TestConcurrentWrites(t *testing.T) {
 		t.Errorf("%d entries, want 20", n)
 	}
 }
+
+func TestUniqueNames(t *testing.T) {
+	ctx := context.Background()
+	st, _ := newStore(t)
+	if _, err := st.CreateUser(ctx, "sam@example.com", "Sam", "password1", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateUser(ctx, "sam2@example.com", "sam", "password1", false); !errors.Is(err, ErrNameTaken) {
+		t.Errorf("a name taken, in other case: %v", err)
+	}
+	// Accounts without a name don't clash.
+	if _, err := st.CreateUser(ctx, "b@example.com", "", "password1", false); err != nil {
+		t.Errorf("a second account without a name: %v", err)
+	}
+	// Naming oneself: free names only; empty is fine, and several can be empty.
+	b, _ := st.GetUserByEmail(ctx, "b@example.com")
+	if _, err := st.SetUserName(ctx, b.ID, "SAM"); !errors.Is(err, ErrNameTaken) {
+		t.Errorf("renamed to a taken name: %v", err)
+	}
+	if u, err := st.SetUserName(ctx, b.ID, "  Bea   Lee "); err != nil || u.Name != "Bea Lee" {
+		t.Errorf("renamed: %+v %v", u, err)
+	}
+	if u, err := st.SetUserName(ctx, b.ID, ""); err != nil || u.Name != "" {
+		t.Errorf("name cleared: %+v %v", u, err)
+	}
+	// The email still says it's the email.
+	if _, err := st.CreateUser(ctx, "SAM@example.com", "Samuel", "password1", false); !errors.Is(err, ErrEmailTaken) {
+		t.Errorf("a taken email: %v", err)
+	}
+}
+
+func TestUniqueNamesMigration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "t.db")
+	key := bytes.Repeat([]byte{1}, 32)
+	st, err := Open(path, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	a, _ := st.CreateUser(ctx, "a@example.com", "Sam", "password1", false)
+	b, _ := st.CreateUser(ctx, "b@example.com", "Other", "password1", false)
+	// As before names were unique: two named Sam.
+	for _, q := range []string{`DROP INDEX users_name`, fmt.Sprintf(`UPDATE users SET name = 'SAM' WHERE id = %d`, b.ID), `PRAGMA user_version = 4`} {
+		if _, err := st.db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.Close()
+	st, err = Open(path, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ua, _ := st.GetUser(ctx, a.ID)
+	ub, _ := st.GetUser(ctx, b.ID)
+	if ua.Name != "Sam" || ub.Name != fmt.Sprintf("SAM (%d)", b.ID) {
+		t.Errorf("names after the upgrade: %q, %q", ua.Name, ub.Name)
+	}
+}

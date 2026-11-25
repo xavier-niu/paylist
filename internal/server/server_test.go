@@ -627,3 +627,32 @@ func TestEntryHistoryAPI(t *testing.T) {
 		t.Errorf("new refund: %+v", res)
 	}
 }
+
+func TestNames(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.st.CreateUser(t.Context(), "boss@example.com", "", testPassword, true); err != nil {
+		t.Fatal(err)
+	}
+	jar, _ := cookiejar.New(nil)
+	admin := &http.Client{Jar: jar}
+	if code := status(t, e.do(t, admin, "POST", "/api/auth/login", map[string]string{"email": "boss@example.com", "password": testPassword})); code != 200 {
+		t.Fatalf("login: %d", code)
+	}
+	e.st.CreateUser(t.Context(), "boss2@example.com", "", testPassword, false)
+	// Your own name.
+	if u := decodeJSON[store.User](t, e.do(t, admin, "PUT", "/api/me/name", map[string]string{"name": "Boss"})); u.Name != "Boss" {
+		t.Errorf("own name: %+v", u)
+	}
+	other, _ := e.st.GetUserByEmail(t.Context(), "boss2@example.com")
+	// Only an admin names others; a taken name is a conflict.
+	if code := status(t, e.do(t, admin, "PUT", fmt.Sprintf("/api/admin/users/%d/name", other.ID), map[string]string{"name": "boss"})); code != 409 {
+		t.Errorf("taken name: %d", code)
+	}
+	if u := decodeJSON[store.User](t, e.do(t, admin, "PUT", fmt.Sprintf("/api/admin/users/%d/name", other.ID), map[string]string{"name": "Deputy"})); u.Name != "Deputy" {
+		t.Errorf("named by an admin: %+v", u)
+	}
+	member := e.signIn(t, "member@example.com")
+	if code := status(t, e.do(t, member, "PUT", fmt.Sprintf("/api/admin/users/%d/name", other.ID), map[string]string{"name": "Nope"})); code != 403 {
+		t.Errorf("a member naming others: %d", code)
+	}
+}

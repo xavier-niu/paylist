@@ -21,6 +21,7 @@ import (
 var (
 	ErrNotFound           = errors.New("not found")
 	ErrEmailTaken         = errors.New("an account with this email already exists")
+	ErrNameTaken          = errors.New("an account with this name already exists")
 	ErrInvalidCredentials = errors.New("email or password is incorrect")
 	ErrSetupDone          = errors.New("this server already has accounts")
 )
@@ -200,6 +201,13 @@ var migrations = []string{
 		created_at TEXT NOT NULL
 	);
 	CREATE INDEX entry_events_entry ON entry_events(entry_id, id);`,
+
+	// 5: names are unique (ignoring case), so the history can go by them; a
+	// name already shared keeps its first holder, and the others get their
+	// account number after it: "Sam (7)".
+	`UPDATE users SET name = name || ' (' || id || ')'
+		WHERE name <> '' AND id NOT IN (SELECT MIN(id) FROM users WHERE name <> '' GROUP BY lower(name));
+	CREATE UNIQUE INDEX users_name ON users(name COLLATE NOCASE) WHERE name <> '';`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

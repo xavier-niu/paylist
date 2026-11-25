@@ -73,6 +73,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/fx", s.requireUser(s.handleFX))
 	mux.HandleFunc("PUT /api/me/prefs", s.requireUser(s.handlePrefs))
 	mux.HandleFunc("PUT /api/me/password", s.requireUser(s.handleChangePassword))
+	mux.HandleFunc("PUT /api/me/name", s.requireUser(s.handleSetName))
 	mux.HandleFunc("PUT /api/me/model", s.requireUser(s.handleSaveModel))
 	mux.HandleFunc("GET /api/me/tokens", s.requireUser(s.handleListTokens))
 	mux.HandleFunc("POST /api/me/tokens", s.requireUser(s.handleCreateToken))
@@ -80,6 +81,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/users", s.requireAdmin(s.handleListUsers))
 	mux.HandleFunc("POST /api/admin/users", s.requireAdmin(s.handleCreateUser))
 	mux.HandleFunc("PUT /api/admin/users/{id}/password", s.requireAdmin(s.handleResetPassword))
+	mux.HandleFunc("PUT /api/admin/users/{id}/name", s.requireAdmin(s.handleSetUserName))
 	mux.HandleFunc("DELETE /api/admin/users/{id}", s.requireAdmin(s.handleDeleteUser))
 
 	// Ledgers, and who has them
