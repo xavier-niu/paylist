@@ -48,8 +48,10 @@ func Tools(ctx context.Context, session *mcp.ClientSession) ([]llm.Tool, error) 
 
 // Run continues the conversation in history, whose last message is the
 // user's, until the model answers. It returns the conversation with the new
-// messages; on an error, the ones so far, ready to continue from.
-func Run(ctx context.Context, client llm.Client, session *mcp.ClientSession, system string, history []llm.Message, emit func(Event) error) ([]llm.Message, error) {
+// messages; on an error, the ones so far, ready to continue from. checkpoint,
+// when not nil, gets the conversation after each step's tools have run, so it
+// can be saved as it goes.
+func Run(ctx context.Context, client llm.Client, session *mcp.ClientSession, system string, history []llm.Message, emit func(Event) error, checkpoint func([]llm.Message)) ([]llm.Message, error) {
 	tools, err := Tools(ctx, session)
 	if err != nil {
 		return history, fmt.Errorf("list the ledger's tools: %w", err)
@@ -87,6 +89,9 @@ func Run(ctx context.Context, client llm.Client, session *mcp.ClientSession, sys
 			}
 		}
 		history = append(history, llm.Message{Role: "tool", Results: results})
+		if checkpoint != nil {
+			checkpoint(history)
+		}
 	}
 }
 

@@ -218,7 +218,7 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 	system := agent.SystemPrompt(today, l.Name, l.Currency, l.Role)
 	history, err = agent.Run(r.Context(), client, session, system, history, func(e agent.Event) error {
 		return nd.send(e)
-	})
+	}, nil)
 	save(agent.Complete(history))
 	if err != nil && r.Context().Err() == nil {
 		status := http.StatusBadGateway
