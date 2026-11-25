@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,6 +41,9 @@ type Server struct {
 
 	toolNamesOnce sync.Once
 	toolNames     []string // the MCP tools' names
+
+	seenMu  sync.Mutex
+	seenURL *string // the address the app was last opened at; nil until read from the store
 }
 
 func New(opts Options) *Server {
@@ -169,6 +173,48 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) needsSetup(r *http.Request) bool {
 	n, err := s.opts.Store.CountUsers(r.Context())
 	return err == nil && n == 0
+}
+
+// seenURLKey is the server setting keeping the address people last opened
+// the app at.
+const seenURLKey = "public_url"
+
+// noteURL remembers the address the app is opened at, for links in what the
+// server sends unasked (reports), when no PAYLIST_PUBLIC_URL says it.
+func (s *Server) noteURL(r *http.Request) {
+	if s.opts.PublicURL != "" {
+		return
+	}
+	u := s.publicURL(r)
+	s.seenMu.Lock()
+	defer s.seenMu.Unlock()
+	if s.seenURL != nil && *s.seenURL == u {
+		return
+	}
+	if err := s.opts.Store.SetSetting(r.Context(), seenURLKey, u); err != nil {
+		s.opts.Logger.Warn("remember the address", "err", err)
+		return
+	}
+	s.seenURL = &u
+}
+
+// linkBase is the address to link to from what the server sends unasked:
+// PAYLIST_PUBLIC_URL, or else the one the app was last opened at ("" when
+// it hasn't been).
+func (s *Server) linkBase(ctx context.Context) string {
+	if s.opts.PublicURL != "" {
+		return strings.TrimRight(s.opts.PublicURL, "/")
+	}
+	s.seenMu.Lock()
+	defer s.seenMu.Unlock()
+	if s.seenURL == nil {
+		v, err := s.opts.Store.Setting(ctx, seenURLKey)
+		if err != nil {
+			return ""
+		}
+		s.seenURL = &v
+	}
+	return *s.seenURL
 }
 
 // publicURL is how people reach this server.

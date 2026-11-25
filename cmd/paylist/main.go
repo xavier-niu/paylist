@@ -71,7 +71,8 @@ Environment:
                             if unset, one is generated in the data directory
   PAYLIST_ADMIN_EMAIL     with PAYLIST_ADMIN_PASSWORD: create this admin on first start
   PAYLIST_SECURE_COOKIES  set to 1 when served over HTTPS (e.g. behind a TLS proxy)
-  PAYLIST_PUBLIC_URL      how people reach the server (e.g. https://pay.example.com), shown as the MCP address
+  PAYLIST_PUBLIC_URL      how people reach the server (e.g. https://pay.example.com): the MCP address,
+                            and reports' links (else the address the app was last opened at)
   PAYLIST_PASSWORD        password for "user add" / "user passwd" instead of a prompt
   PAYLIST_DEV_FAKE        set to 1 to offer the offline demo model (demos and tests only)
   PAYLIST_DEMO_SEED       set to 1 to fill the PAYLIST_ADMIN_EMAIL account's empty table with demo data

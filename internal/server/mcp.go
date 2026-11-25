@@ -773,7 +773,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc, via string) *mcp.Server {
 		Name: "ledger_reports",
 		Description: "The reports the user gets of a ledger, on channels of theirs (the channels tool): daily (the day before), weekly (the week before, " +
 			"sent on Mondays) and monthly (the month before, sent on the 1st), at the time of day set. A report is a brief note on how the period compares " +
-			"with the usual and which types rose or fell most; with ai on, the user's AI model, after looking into the ledger with the tools that read it, adds a short suggestion of what to do about it. " +
+			"with the usual and which types rose or fell most; with ai on, the user's AI model, after looking into the ledger with the tools that read it, adds a short suggestion of what to do about it, and a link to ask the agent more. " +
 			"get shows the settings; set changes them; preview shows a report as it would be sent today; send sends it now.",
 		Annotations: &mcp.ToolAnnotations{Title: "A ledger's reports", DestructiveHint: &no, OpenWorldHint: &yes},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpReportsIn) (*mcp.CallToolResult, mcpReportsOut, error) {

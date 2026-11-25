@@ -16,6 +16,7 @@ import (
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r.Context())
+	s.noteURL(r) // the app is opening: this is where people reach it
 	model, err := s.opts.Store.GetModelSettings(r.Context(), u.ID)
 	if err != nil {
 		s.internalError(w, err)

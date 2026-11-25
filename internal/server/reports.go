@@ -95,7 +95,8 @@ func reportLanguage(u *store.User, r store.Reports) string {
 func day(t time.Time) string { return t.Format("2006-01-02") }
 
 // buildReport makes a ledger's report for period, as sent on the day today is.
-// With ai, the user's AI model adds a suggestion, when they have one.
+// With ai, the user's AI model adds a suggestion, when they have one, and
+// the report ends with a link to ask the agent more.
 func (s *Server) buildReport(ctx context.Context, u *store.User, l *store.Ledger, period, lang string, ai bool, today time.Time) (*report, error) {
 	if period != store.ReportDaily && period != store.ReportWeekly && period != store.ReportMonthly {
 		return nil, fmt.Errorf("the report is daily, weekly or monthly, not %q", period)
@@ -108,9 +109,13 @@ func (s *Server) buildReport(ctx context.Context, u *store.User, l *store.Ledger
 	rep := &report{Period: period, Ledger: l.Name, From: day(from), To: day(to), Figures: figures}
 	rep.Title = reportTitle(l.Name, lang)
 	rep.Text = writeReport(rep, lang)
-	if ai {
+	if ai && s.aiReady(ctx, u.ID) {
 		if rep.Suggestion = s.suggest(ctx, u, l, rep, lang); rep.Suggestion != "" {
 			rep.Text += "\n\n" + tr(lang, "✨ AI suggestion", "✨ AI 建议") + "\n" + rep.Suggestion
+		}
+		// Where to ask the agent about it.
+		if base := s.linkBase(ctx); base != "" {
+			rep.Text += "\n\n" + tr(lang, "Ask more: ", "继续提问：") + base + "/#/agent"
 		}
 	}
 	return rep, nil

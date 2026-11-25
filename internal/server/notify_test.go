@@ -149,7 +149,7 @@ func TestReports(t *testing.T) {
 // or AI is off, the note goes alone.
 func TestReportByModel(t *testing.T) {
 	e := newEnv(t)
-	s := New(Options{Store: e.st})
+	s := New(Options{Store: e.st, PublicURL: "https://pay.example.com/"})
 	u, _ := e.st.CreateUser(t.Context(), "m@example.com", "", testPassword, false)
 	ls, _ := e.st.ListLedgers(t.Context(), u.ID)
 	addSpending(t, e.st, ls[0].ID)
@@ -191,7 +191,7 @@ func TestReportByModel(t *testing.T) {
 	rep, err := s.buildReport(t.Context(), u, &ls[0], store.ReportDaily, "zh", true, today)
 	want := "交通是本月新出现的支出，主要是 Train 和 Taxi。"
 	if err != nil || rep.Suggestion != want || !strings.HasPrefix(rep.Text, "昨天（11月24日 周二）\n  合计 ¥100.00") ||
-		!strings.HasSuffix(rep.Text, "\n\n✨ AI 建议\n"+want) {
+		!strings.HasSuffix(rep.Text, "\n\n✨ AI 建议\n"+want+"\n\n继续提问：https://pay.example.com/#/agent") {
 		t.Fatalf("with a suggestion: %v %+v", err, rep)
 	}
 	mu.Lock()
@@ -215,14 +215,35 @@ func TestReportByModel(t *testing.T) {
 	}
 	fail = true
 	mu.Unlock()
-	if rep, _ = s.buildReport(t.Context(), u, &ls[0], store.ReportDaily, "zh", false, today); rep.Suggestion != "" || strings.Contains(rep.Text, "✨") {
+	if rep, _ = s.buildReport(t.Context(), u, &ls[0], store.ReportDaily, "zh", false, today); rep.Suggestion != "" || strings.Contains(rep.Text, "✨") || strings.Contains(rep.Text, "继续提问") {
 		t.Errorf("with AI off: %+v", rep)
 	}
 	if !s.aiReady(t.Context(), u.ID) {
 		t.Error("a model, not ready")
 	}
-	if rep, _ = s.buildReport(t.Context(), u, &ls[0], store.ReportDaily, "zh", true, today); rep.Suggestion != "" || !strings.HasPrefix(rep.Text, "昨天（11月24日 周二）\n  合计 ¥100.00") || strings.Contains(rep.Text, "✨") {
-		t.Errorf("the model failing: %+v", rep)
+	if rep, _ = s.buildReport(t.Context(), u, &ls[0], store.ReportDaily, "zh", true, today); rep.Suggestion != "" || !strings.HasPrefix(rep.Text, "昨天（11月24日 周二）\n  合计 ¥100.00") || strings.Contains(rep.Text, "✨") ||
+		!strings.HasSuffix(rep.Text, "\n\n继续提问：https://pay.example.com/#/agent") {
+		t.Errorf("the model failing (the link stays): %+v", rep)
+	}
+}
+
+// The link at the end of a report goes to where people open the app: the
+// address it was last opened at, or PAYLIST_PUBLIC_URL when that's set.
+func TestLinkBase(t *testing.T) {
+	e := newEnv(t)
+	if b := New(Options{Store: e.st}).linkBase(t.Context()); b != "" {
+		t.Errorf("before the app was opened: %q", b)
+	}
+	c := e.signIn(t, "link@example.com")
+	e.do(t, c, "GET", "/api/me", nil).Body.Close()
+	if v, _ := e.st.Setting(t.Context(), seenURLKey); v != e.srv.URL {
+		t.Errorf("remembered %q, want %q", v, e.srv.URL)
+	}
+	if b := New(Options{Store: e.st}).linkBase(t.Context()); b != e.srv.URL {
+		t.Errorf("after a restart: %q", b)
+	}
+	if b := New(Options{Store: e.st, PublicURL: "https://pay.example.com/"}).linkBase(t.Context()); b != "https://pay.example.com" {
+		t.Errorf("with PAYLIST_PUBLIC_URL: %q", b)
 	}
 }
 
