@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xavier-niu/paylist/internal/agent"
 	"github.com/xavier-niu/paylist/internal/llm"
 	"github.com/xavier-niu/paylist/internal/store"
 )
@@ -17,14 +18,15 @@ import (
 // Reports: a brief note on what a ledger spent over the day, week or month
 // before, against what it usually does, and the types that stood out.
 // Paylist writes the note; the user's AI model, when they have one and want
-// it, adds a suggestion of what to do about it.
+// it, adds a suggestion of what to do about it, after looking into the
+// ledger with the MCP tools that read it.
 
 const (
-	usualDays  = 28 // a daily report's usual day is the average of the days before, up to this many
-	usualWeeks = 8  // and a weekly report's usual week, of the weeks before
-	minDays    = 7  // fewer days than this before, and there's no usual day
-	maxMovers  = 3  // types named going each way
-	reportTime = 90 * time.Second
+	usualDays  = 28              // a daily report's usual day is the average of the days before, up to this many
+	usualWeeks = 8               // and a weekly report's usual week, of the weeks before
+	minDays    = 7               // fewer days than this before, and there's no usual day
+	maxMovers  = 3               // types named going each way
+	reportTime = 3 * time.Minute // for the AI suggestion, tools and all
 )
 
 // report is one report on one ledger.
@@ -107,7 +109,7 @@ func (s *Server) buildReport(ctx context.Context, u *store.User, l *store.Ledger
 	rep.Title = reportTitle(l.Name, lang)
 	rep.Text = writeReport(rep, lang)
 	if ai {
-		if rep.Suggestion = s.suggest(ctx, u.ID, rep, lang); rep.Suggestion != "" {
+		if rep.Suggestion = s.suggest(ctx, u, l, rep, lang); rep.Suggestion != "" {
 			rep.Text += "\n\n" + tr(lang, "✨ AI suggestion", "✨ AI 建议") + "\n" + rep.Suggestion
 		}
 	}
@@ -374,29 +376,46 @@ func writeReport(rep *report, lang string) string {
 
 const suggestPrompt = `Paylist, a personal spending tracker, sends its user a note on what one of their ledgers spent over a period against what it usually does. You get the note's figures as JSON, with "note": the note itself, which the user reads just before your words.
 
-Add a suggestion to it: one short paragraph, about 50 to 100 words (a guide, not a limit), with one or two concrete, practical things the user could do next %s, such as where to cut back, a type to keep an eye on, or that they're doing well and how to keep it so. Ground it in the figures, naming the types; don't list the figures again, and don't invent any. If the %s was ordinary, say so briefly and keep the suggestion small. Plain text: one paragraph, no greeting, no heading, no markdown, no emoji. Write in %s.`
+Add a suggestion to it: one short paragraph, about 50 to 100 words (a guide, not a limit), with one or two concrete, practical things the user could do next %s, such as where to cut back, a type to keep an eye on, or that they're doing well and how to keep it so. If the %s was ordinary, say so briefly and keep the suggestion small.
 
-// suggest has the user's AI model suggest what to do about a report; "" when
+You can look into the ledger first with the tools, which only read it (the ledger is the one named; leave "ledger" out to use it): list_entries shows what was bought, so what is behind a type that rose, such as one large purchase or many small ones; get_stats and list_months show the months before. Look only as far as helps, a few calls at most, then write. Ground what you say in what you saw, naming the types or entries; don't list the figures again, and don't invent any.
+
+Your last reply is the paragraph itself. Plain text: one paragraph, no greeting, no heading, no markdown, no emoji. Write in %s.`
+
+// suggest has the user's AI model suggest what to do about a ledger's
+// report, looking into the ledger with the MCP tools that read it; "" when
 // they have no model (or only the demo one) or it fails.
-func (s *Server) suggest(ctx context.Context, userID int64, rep *report, lang string) string {
-	client, cfg, err := s.llmClientFor(ctx, userID)
+func (s *Server) suggest(ctx context.Context, u *store.User, l *store.Ledger, rep *report, lang string) string {
+	client, cfg, err := s.llmClientFor(ctx, u.ID)
 	if err != nil || cfg.Kind == "fake" {
 		return ""
 	}
 	ctx, cancel := context.WithTimeout(ctx, reportTime)
 	defer cancel()
+	session, closeSession, err := s.mcpSession(ctx, u, l, true)
+	if err != nil {
+		s.opts.Logger.Warn("report: no tools for the suggestion", "user", u.ID, "err", err)
+		return ""
+	}
+	defer closeSession()
 	f := reportFacts(rep)
 	f["note"] = rep.Text
+	f["today"] = time.Now().Format("2006-01-02")
 	facts, _ := json.Marshal(f)
 	unit := map[string]string{store.ReportDaily: "day", store.ReportWeekly: "week", store.ReportMonthly: "month"}[rep.Period]
 	system := fmt.Sprintf(suggestPrompt, unit, unit, tr(lang, "English", "Simplified Chinese"))
-	msg, _, err := client.Step(ctx, system, []llm.Message{{Role: "user", Text: string(facts)}}, nil, func(string) error { return nil })
+	history, err := agent.Run(ctx, client, session, system, []llm.Message{{Role: "user", Text: string(facts)}}, func(agent.Event) error { return nil }, nil)
 	if err != nil {
-		s.opts.Logger.Warn("report: the model failed; sending it without a suggestion", "user", userID, "err", err)
+		s.opts.Logger.Warn("report: the model failed; sending it without a suggestion", "user", u.ID, "err", err)
+		return ""
+	}
+	// The answer: the model's last message, when it ended with words.
+	last := history[len(history)-1]
+	if last.Role != "assistant" || len(last.ToolCalls) > 0 {
 		return ""
 	}
 	// Its length is the model's to judge; this only stops a runaway.
-	return cut(strings.Join(strings.Fields(msg.Text), " "), 2000)
+	return cut(strings.Join(strings.Fields(last.Text), " "), 2000)
 }
 
 // reportFacts are the figures the model writes from, amounts written out.

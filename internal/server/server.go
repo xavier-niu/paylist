@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/xavier-niu/paylist/internal/fx"
@@ -36,6 +37,9 @@ type Server struct {
 	http    *http.Client
 	limiter *loginLimiter
 	runs    agentRuns // agent turns underway
+
+	toolNamesOnce sync.Once
+	toolNames     []string // the MCP tools' names
 }
 
 func New(opts Options) *Server {

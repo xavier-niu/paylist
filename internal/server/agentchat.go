@@ -305,9 +305,33 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 
 // agentSession connects an MCP client to a server whose tools work on u's table.
 func (s *Server) agentSession(ctx context.Context, u *store.User, l *store.Ledger) (*mcp.ClientSession, func(), error) {
-	// The agent works on the ledger open on the page, unless asked about another.
+	return s.mcpSession(ctx, u, l, false)
+}
+
+// readTools are the MCP tools that only read a user's ledgers.
+var readTools = map[string]bool{
+	"list_ledgers": true, "get_profile": true, "list_entries": true, "get_stats": true, "list_months": true,
+	"get_history": true, "suggest_entries": true, "list_options": true, "get_exchange_rate": true,
+}
+
+// mcpSession is an in-memory MCP session for the user, on ledger l unless a
+// call names another; with readOnly, it has only the tools that read.
+func (s *Server) mcpSession(ctx context.Context, u *store.User, l *store.Ledger, readOnly bool) (*mcp.ClientSession, func(), error) {
 	def := strconv.FormatInt(l.ID, 10)
 	srv := s.newMCPServer(func(*mcp.CallToolRequest) (*store.User, string, error) { return u, def, nil }, "agent")
+	if readOnly {
+		names := s.mcpToolNames()
+		if len(names) == 0 {
+			return nil, nil, errors.New("couldn't list the MCP tools")
+		}
+		var others []string
+		for _, name := range names {
+			if !readTools[name] {
+				others = append(others, name)
+			}
+		}
+		srv.RemoveTools(others...)
+	}
 	clientT, serverT := mcp.NewInMemoryTransports()
 	ss, err := srv.Connect(ctx, serverT, nil)
 	if err != nil {
@@ -320,6 +344,37 @@ func (s *Server) agentSession(ctx context.Context, u *store.User, l *store.Ledge
 		return nil, nil, err
 	}
 	return cs, func() { cs.Close(); ss.Close() }, nil
+}
+
+// mcpToolNames are the names of all the MCP tools (nil if they couldn't be listed).
+func (s *Server) mcpToolNames() []string {
+	s.toolNamesOnce.Do(func() { s.toolNames = s.listMCPTools() })
+	return s.toolNames
+}
+
+func (s *Server) listMCPTools() []string {
+	ctx := context.Background()
+	srv := s.newMCPServer(func(*mcp.CallToolRequest) (*store.User, string, error) { return nil, "", errors.New("no one") }, "")
+	clientT, serverT := mcp.NewInMemoryTransports()
+	ss, err := srv.Connect(ctx, serverT, nil)
+	if err != nil {
+		return nil
+	}
+	defer ss.Close()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "list", Version: "1"}, nil).Connect(ctx, clientT, nil)
+	if err != nil {
+		return nil
+	}
+	defer cs.Close()
+	res, err := cs.ListTools(ctx, nil)
+	if err != nil {
+		return nil
+	}
+	names := make([]string, len(res.Tools))
+	for i, t := range res.Tools {
+		names[i] = t.Name
+	}
+	return names
 }
 
 func writeLLMError(w http.ResponseWriter, err error) {

@@ -144,8 +144,9 @@ func TestReports(t *testing.T) {
 	}
 }
 
-// With an AI model chosen, it adds a suggestion after the note; when it
-// fails, or AI is off, the note goes alone.
+// With an AI model chosen, it adds a suggestion after the note, having
+// looked into the ledger with the tools that only read it; when it fails,
+// or AI is off, the note goes alone.
 func TestReportByModel(t *testing.T) {
 	e := newEnv(t)
 	s := New(Options{Store: e.st})
@@ -155,24 +156,31 @@ func TestReportByModel(t *testing.T) {
 	today := time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)
 
 	var mu sync.Mutex
-	var asked string
+	var asked []string
 	fail := false
+	send := func(w http.ResponseWriter, delta map[string]any, finish string) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		c, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": delta}}})
+		io.WriteString(w, "data: "+string(c)+"\n\n")
+		c, _ = json.Marshal(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": finish}}})
+		io.WriteString(w, "data: "+string(c)+"\n\ndata: [DONE]\n\n")
+	}
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		mu.Lock()
-		asked = string(b)
+		asked = append(asked, string(b))
 		failing := fail
 		mu.Unlock()
-		if failing {
+		switch {
+		case failing:
 			http.Error(w, "down", 500)
-			return
+		case !strings.Contains(string(b), `"role":"tool"`):
+			// First, a look at November's entries.
+			send(w, map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "c1", "type": "function",
+				"function": map[string]any{"name": "list_entries", "arguments": `{"from":"2026-11-01","to":"2026-11-24"}`}}}}, "tool_calls")
+		default:
+			send(w, map[string]any{"content": "交通是本月新出现的支出，主要是 Train 和 Taxi。"}, "stop")
 		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, part := range []string{"昨天花了 ¥100.00，", "远高于往常。"} {
-			c, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"content": part}}}})
-			io.WriteString(w, "data: "+string(c)+"\n\n")
-		}
-		io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	t.Cleanup(model.Close)
 	key := "k"
@@ -181,15 +189,29 @@ func TestReportByModel(t *testing.T) {
 	}
 
 	rep, err := s.buildReport(t.Context(), u, &ls[0], store.ReportDaily, "zh", true, today)
-	if err != nil || rep.Suggestion != "昨天花了 ¥100.00，远高于往常。" || !strings.HasPrefix(rep.Text, "昨天（11月24日 周二）\n  合计 ¥100.00") ||
-		!strings.HasSuffix(rep.Text, "\n\n✨ AI 建议\n昨天花了 ¥100.00，远高于往常。") {
+	want := "交通是本月新出现的支出，主要是 Train 和 Taxi。"
+	if err != nil || rep.Suggestion != want || !strings.HasPrefix(rep.Text, "昨天（11月24日 周二）\n  合计 ¥100.00") ||
+		!strings.HasSuffix(rep.Text, "\n\n✨ AI 建议\n"+want) {
 		t.Fatalf("with a suggestion: %v %+v", err, rep)
 	}
 	mu.Lock()
-	for _, fact := range []string{"Simplified Chinese", "much higher than usual", "¥7.70", "Personal", "types_lower_than_usual_this_month_so_far", "spent_by_type", "50 to 100 words"} {
-		if !strings.Contains(asked, fact) {
-			t.Errorf("the model wasn't told %q: %s", fact, asked)
+	if len(asked) != 2 {
+		t.Fatalf("asked the model %d times, want 2", len(asked))
+	}
+	for _, fact := range []string{"Simplified Chinese", "much higher than usual", "¥7.70", "Personal", "types_lower_than_usual_this_month_so_far", "spent_by_type", "50 to 100 words", `"name":"list_entries"`, `"name":"get_stats"`} {
+		if !strings.Contains(asked[0], fact) {
+			t.Errorf("the model wasn't told %q", fact)
 		}
+	}
+	// Only the tools that read.
+	for _, tool := range []string{"add_entries", "update_entry", "delete_entries", "refund", "manage_option", "manage_ledger", "ledger_people", "channels", "ledger_reports"} {
+		if strings.Contains(asked[0], `"name":"`+tool+`"`) {
+			t.Errorf("the model was offered %s", tool)
+		}
+	}
+	// What it looked up came back to it.
+	if !strings.Contains(asked[1], "Taxi") || !strings.Contains(asked[1], "Train") {
+		t.Errorf("the entries didn't reach the model: %s", asked[1])
 	}
 	fail = true
 	mu.Unlock()
