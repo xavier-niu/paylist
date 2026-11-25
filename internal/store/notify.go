@@ -521,3 +521,20 @@ func (s *Store) FirstEntryDate(ctx context.Context, ledgerID int64) (string, err
 	err := s.db.QueryRowContext(ctx, `SELECT MIN(date) FROM entries WHERE ledger_id = ?`, ledgerID).Scan(&d)
 	return d.String, err
 }
+
+// Setting is one of the server's own settings ("" when it has none).
+func (s *Store) Setting(ctx context.Context, key string) (string, error) {
+	var v string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM server_settings WHERE key = ?`, key).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return v, err
+}
+
+// SetSetting keeps one of the server's own settings.
+func (s *Store) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO server_settings (key, value) VALUES (?, ?)
+		ON CONFLICT (key) DO UPDATE SET value = excluded.value`, key, value)
+	return err
+}

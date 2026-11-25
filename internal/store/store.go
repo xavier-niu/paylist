@@ -247,6 +247,13 @@ var migrations = []string{
 		PRIMARY KEY (ledger_id, user_id, channel_id),
 		FOREIGN KEY (ledger_id, user_id) REFERENCES ledger_reports(ledger_id, user_id) ON DELETE CASCADE
 	);`,
+
+	// 7: settings of the server's own, by name, such as the address people
+	// last reached it at (for links in the reports it sends).
+	`CREATE TABLE server_settings (
+		key   TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {
