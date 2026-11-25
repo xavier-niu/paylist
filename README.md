@@ -12,6 +12,10 @@
   Self-hosted · one Go binary · SQLite · English and 中文 · light and dark
 </p>
 
+<p align="center">
+  <img src="docs/screenshot.jpg" alt="The overview of a month: what was spent against last month and the usual, the spending day by day, and by type and by card">
+</p>
+
 ---
 
 Paylist is a personal and household spending tracker you run yourself. Every expense is one line, with a name, a type, an amount, a date and the card it was paid with, kept month by month. You write them down in a few keystrokes; Paylist shows you the month at a glance; and an AI agent (yours, on your own key) can add, fix and answer questions about them. Agents you already use, such as Claude Code, can do the same over MCP.
@@ -20,11 +24,13 @@ Paylist is a personal and household spending tracker you run yourself. Every exp
 
 Paylist opens on the month at a glance.
 
-- **This month's spending** against the same days of last month: ↑ CN¥801.72 (10.2%).
+- **This month's spending** against the same days of last month, and against the usual: the average of the six months before, up to the same day.
 - **Cumulative spending** through the month, drawn over last month's, so you see whether you're ahead or behind.
-- **Day by day**: a calendar shaded by how much went out each day.
+- **Day by day**: a calendar shaded green by how much went out each day, and red where more came back.
 - **By type** and **by card**: two donuts, with the share of each.
-- **Monthly spending** for the last twelve months.
+- **Against the usual**: each type this month against its usual month, the furthest above first, with its last twelve months as a sparkline: where the spending grew, so where to look to spend less next month.
+- **Monthly spending** for the last twelve months, with the average, highest and lowest month, and each month's change on the one before.
+- **The year** against the same days of last year, its months beside last year's, and by type.
 
 Click a day, a type or a card to open its entries in a window, and click an entry to change it.
 
