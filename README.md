@@ -118,7 +118,7 @@ By type, month so far
 
 - **Channels**, in **Settings → Channels**, are where it goes: a webhook (sent Paylist's JSON, with headers of your own such as `Authorization`, kept encrypted and never shown again), Slack, Discord, Feishu, DingTalk, WeCom, Bark or ntfy. **Test** sends one a short message; one that fails says why.
 - **Reports**, in each ledger's **Ledger settings**, are yours to choose, on a shared ledger too: **daily** (yesterday against a usual day, and the month so far), **weekly** on Mondays (last week against the eight before) and **monthly** on the 1st (last month against the usual month), at the time and in the language you pick, to the channels you pick. **Send now** sends one at once.
-- **AI suggestion**: with an AI model chosen in Settings and the switch on, it ends the note with a short paragraph on what to do about it, such as where to cut back. Before writing, it can look into the ledger (its entries and months before) through the MCP tools that only read it.
+- **AI suggestion**: with an AI model chosen in Settings and the switch on, it ends the note with a short paragraph on what to do about it, such as where to cut back. Before writing, it can look into the ledger (its entries and months before) through the MCP tools that only read it. The report then ends with a link to the agent page, to ask more: the address set by `PAYLIST_PUBLIC_URL`, or else the one Paylist was last opened at.
 
 ## Ledgers, shared
 
@@ -170,7 +170,7 @@ Everything lives in the data directory: `paylist.db`, and `secret.key`, which en
 | `PAYLIST_SECRET` | generated into `secret.key` | 32-byte key (hex or base64) that encrypts stored API keys |
 | `PAYLIST_ADMIN_EMAIL`, `PAYLIST_ADMIN_PASSWORD` | unset | Create this admin on first start (only while there are no accounts) |
 | `PAYLIST_SECURE_COOKIES=1` | off | Mark the session cookie `Secure`; set it when serving over HTTPS |
-| `PAYLIST_PUBLIC_URL` | from each request | How people reach the server; set it behind a proxy |
+| `PAYLIST_PUBLIC_URL` | from the requests | How people reach the server: the MCP address, and the link at the end of a report. Without it, the address the app was last opened at |
 | `-static` / `PAYLIST_STATIC_DIR` | embedded | Serve the web app from a directory instead, such as `web/dist` |
 | `PAYLIST_DEV_FAKE=1` | off | Offer the offline demo model. For demos and tests only |
 | `PAYLIST_DEMO_SEED=1` | off | Fill the `PAYLIST_ADMIN_EMAIL` account's empty ledger with demo data |
