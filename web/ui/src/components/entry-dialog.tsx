@@ -254,7 +254,7 @@ export function EntryDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="gap-0 overflow-hidden rounded-[20px] border-0 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3),0_0_0_1px_var(--rule-2)] ring-0 sm:max-w-[500px]"
+        className="gap-0 overflow-hidden rounded-[20px] border border-rule-2 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3)] ring-0 sm:max-w-[500px]"
         onEscapeKeyDown={(e) => {
           // Escape closes the suggestions first, then the form; changes to an entry are saved on the way out.
           if (showSuggestions) {
@@ -303,7 +303,7 @@ export function EntryDialog({
                 id="entry-suggestions"
                 role="listbox"
                 aria-label={t("Used before")}
-                className="absolute inset-x-5 top-full z-10 mt-1 grid gap-0.5 rounded-[14px] bg-sheet p-1 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)]"
+                className="absolute inset-x-5 top-full z-10 mt-1 grid gap-0.5 rounded-[14px] bg-sheet p-1 shadow-[0_16px_48px_rgb(0_0_0/.18)]"
               >
                 <li className="px-2.5 pt-1 pb-0.5 text-[11.5px] text-muted-foreground">{t("Used before")}</li>
                 {suggestions.map((sg, i) => (

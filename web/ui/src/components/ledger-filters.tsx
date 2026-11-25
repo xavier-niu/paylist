@@ -106,7 +106,7 @@ function summary(f: Filter): string {
   }
 }
 
-const popover = "w-64 gap-0 overflow-hidden rounded-[14px] border-0 p-0 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0"
+const popover = "w-64 gap-0 overflow-hidden rounded-[14px] border border-rule-2 p-0 shadow-[0_16px_48px_rgb(0_0_0/.18)] ring-0"
 const chip = "chip-in flex h-7 max-w-72 items-center gap-1.5 rounded-full px-3 text-[13px] transition-colors"
 
 /**

@@ -36,7 +36,7 @@ export function NewLedgerDialog({ open, onOpenChange, currency, onCreated }: { o
   const currencies = CURRENCIES.includes(currency) ? CURRENCIES : [currency, ...CURRENCIES]
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden rounded-[20px] border-0 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3),0_0_0_1px_var(--rule-2)] ring-0 sm:max-w-[420px]">
+      <DialogContent className="gap-0 overflow-hidden rounded-[20px] border border-rule-2 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3)] ring-0 sm:max-w-[420px]">
         <form onSubmit={submit}>
           <div className="grid gap-4 px-7 pt-6 pb-6">
             <DialogTitle className="text-[13px] font-normal text-ink-2">{t("New ledger")}</DialogTitle>

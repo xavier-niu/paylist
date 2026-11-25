@@ -42,7 +42,7 @@ export function MonthSwitch({ month, onChange }: { month: string; onChange: (m: 
             {monthLabel(month)}
           </button>
         </PopoverTrigger>
-        <PopoverContent align="center" sideOffset={8} className="w-64 gap-2 rounded-[14px] border-0 p-2 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0">
+        <PopoverContent align="center" sideOffset={8} className="w-64 gap-2 rounded-[14px] border border-rule-2 p-2 shadow-[0_16px_48px_rgb(0_0_0/.18)] ring-0">
           <div className="flex items-center justify-between">
             <button type="button" aria-label={t("Previous year")} onClick={() => setYear((y) => y - 1)} className={arrow}>
               <ChevronLeftIcon className="size-4" />
@@ -105,7 +105,7 @@ export function MonthHeading({ month, onChange }: { month: string; onChange: (m:
             {monthLabel(month)}
           </button>
         </PopoverTrigger>
-        <PopoverContent align="start" sideOffset={8} className="w-64 gap-2 rounded-[14px] border-0 p-2 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0">
+        <PopoverContent align="start" sideOffset={8} className="w-64 gap-2 rounded-[14px] border border-rule-2 p-2 shadow-[0_16px_48px_rgb(0_0_0/.18)] ring-0">
           <div className="flex items-center justify-between">
             <button type="button" aria-label={t("Previous year")} onClick={() => setYear((y) => y - 1)} className={arrow}>
               <ChevronLeftIcon className="size-4" />

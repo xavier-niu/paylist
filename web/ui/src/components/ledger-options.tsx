@@ -72,7 +72,7 @@ function OptionRow({ o, ledgerID, colors, onChanged, onDelete, readOnly }: { o: 
               <span className="dot !size-2.5" />
             </button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="w-44 gap-0 rounded-[12px] border-0 p-1 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0">
+          <PopoverContent align="start" className="w-44 gap-0 rounded-[12px] border border-rule-2 p-1 shadow-[0_16px_48px_rgb(0_0_0/.18)] ring-0">
             {colors.map((c) => (
               <button key={c} type="button" onClick={() => void save({ color: c })} className="flex h-8 w-full items-center gap-2 rounded-[4px] px-2 text-[13px] hover:bg-wash" data-color={c}>
                 <span className="dot" /> <span className="capitalize">{t(c)}</span>

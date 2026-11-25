@@ -283,7 +283,7 @@ export function App() {
               <ChevronsUpDownIcon className="size-3.5 shrink-0 text-ink-2" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64 rounded-[12px] border-0 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0">
+          <DropdownMenuContent align="start" className="w-64 rounded-[12px] border border-rule-2 shadow-[0_16px_48px_rgb(0_0_0/.18)] ring-0">
             <DropdownMenuLabel className="font-normal text-muted-foreground">{t("Ledgers")}</DropdownMenuLabel>
             {ledgers.map((l) => (
               <DropdownMenuItem key={l.id} onSelect={() => {

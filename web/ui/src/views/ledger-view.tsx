@@ -364,7 +364,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
                   <EllipsisIcon />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-auto min-w-44 rounded-[12px] border-0 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0">
+              <DropdownMenuContent align="end" className="w-auto min-w-44 rounded-[12px] border border-rule-2 shadow-[0_16px_48px_rgb(0_0_0/.18)] ring-0">
                 <DropdownMenuItem asChild>
                   <a href={api.exportURL(month)} download>
                     <DownloadIcon /> {t("Export as CSV")}
