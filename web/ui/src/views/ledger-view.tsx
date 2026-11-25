@@ -14,6 +14,7 @@ import { Loading, Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { api, compareLabel, currencySymbol, dateLabel, money, monthLabel, monthName, plainAmount, shiftMonth, thisMonth, today, type Entry, type EntryInput, type LedgerOrder, type Stats } from "@/lib/api"
 import { Money, Original } from "@/lib/money"
+import { lastCard, rememberCard } from "@/lib/options"
 import { optionColor, useApp } from "@/lib/state"
 import { matches } from "@/lib/search"
 import { cn } from "@/lib/utils"
@@ -697,12 +698,13 @@ function SkeletonRows() {
 
 /** The new row: fill it in and press Enter. It stays open for the next one; Escape closes it. */
 function Draft({ month, onAdded, onDone }: { month: string; onAdded: (e: Entry) => void; onDone: () => void }) {
-  const { options } = useApp()
+  const { options, ledger } = useApp()
   const [name, setName] = useState("")
   const [type, setType] = useState("")
   const [amount, setAmount] = useState("")
   const [date, setDate] = useState(today)
-  const [card, setCard] = useState("")
+  // The card last added with, as in the New form.
+  const [card, setCard] = useState(() => lastCard(ledger.id, options.cards))
   const [busy, setBusy] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
   useEffect(() => nameRef.current?.focus(), [])
@@ -721,6 +723,7 @@ function Draft({ month, onAdded, onDone }: { month: string; onAdded: (e: Entry) 
     setBusy(true)
     try {
       const e = await api.createEntry({ name, type, amount: n, date, card })
+      rememberCard(ledger.id, e.card)
       setName("")
       setAmount("")
       if (e.date.startsWith(month)) onAdded(e)

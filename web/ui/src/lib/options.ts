@@ -25,3 +25,38 @@ export function sharesWord(a: string, b: string): boolean {
   const wb = words(b)
   return words(a).some((x) => wb.some((y) => x.startsWith(y) || y.startsWith(x)))
 }
+
+const lastCardKey = (ledger: number) => `paylist-last-card-${ledger}`
+
+/**
+ * The card a new entry starts with: the one last added with in this ledger
+ * (remembered in this browser), or, before that, the one most recently used
+ * there; "" for none.
+ */
+export function lastCard(ledger: number, cards: Option[]): string {
+  try {
+    const kept = localStorage.getItem(lastCardKey(ledger))
+    if (kept && cards.some((c) => c.name === kept)) return kept
+  } catch {
+    /* no storage here */
+  }
+  let best = ""
+  let latest = ""
+  for (const c of cards) {
+    if (c.last_used && c.last_used > latest && !isInactive(c)) {
+      best = c.name
+      latest = c.last_used
+    }
+  }
+  return best
+}
+
+/** Remembers the card an entry was just added with, for the next one. */
+export function rememberCard(ledger: number, card: string) {
+  if (!card) return
+  try {
+    localStorage.setItem(lastCardKey(ledger), card)
+  } catch {
+    /* no storage here */
+  }
+}

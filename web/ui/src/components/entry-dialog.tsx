@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Spinner } from "@/components/ui/spinner"
 import { api, currencySymbol, dateLabel, money, monthLabel, today, type Entry, type FxRate, type Suggestion } from "@/lib/api"
 import { CURRENCIES } from "@/lib/currencies"
+import { lastCard, rememberCard } from "@/lib/options"
 import { Original } from "@/lib/money"
 import { optionColor, useApp } from "@/lib/state"
 import { matchAt } from "@/lib/search"
@@ -96,7 +97,8 @@ export function EntryDialog({
       setName("")
       setAmount("")
       setType("")
-      setCard("")
+      // The card last added with: entries tend to come in a card's batches.
+      setCard(lastCard(ledger.id, options.cards))
       setDate(today())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,7 +131,8 @@ export function EntryDialog({
   const pick = (sg: Suggestion) => {
     setName(sg.name)
     setType(sg.type)
-    if (sg.card) setCard(sg.card)
+    // The card already chosen stays (entries come in a card's batches); none, and the one it was last paid with.
+    if (sg.card) setCard((c) => c || sg.card)
     setAmount(sg.amount.toFixed(2))
     // That amount is in the ledger's currency.
     setCur(ledger.currency)
@@ -283,6 +286,7 @@ export function EntryDialog({
       // Paid in another currency: what it was there is kept beside the ledger's amount.
       const fields = { name, amount: n, type, card, date, ...(foreign ? { orig_amount: typed, orig_currency: cur } : {}) }
       const saved = entry ? await api.updateEntry(entry.id, fields) : await api.createEntry(fields)
+      if (!entry) rememberCard(ledger.id, saved.card)
       bumpTable()
       void reloadOptions()
       if (entry) {
