@@ -322,7 +322,7 @@ export function CalendarHeat({
               style={{ background: `var(--seq-${s})`, color: s >= 4 ? "var(--seq-text)" : s > 0 ? "var(--ink)" : "var(--muted-foreground)" }}
             >
               <span className="text-[10.5px] leading-none opacity-70">{Number(d.date.slice(8))}</span>
-              {d.total !== 0 && <span className="w-full truncate text-right text-[11px] leading-none font-semibold sm:text-[12px]">{compactAmount(d.total)}</span>}
+              {d.total !== 0 && <span className={cn("w-full truncate text-right text-[11px] leading-none font-semibold sm:text-[12px]", d.total < 0 && "text-red")}>{compactAmount(d.total)}</span>}
             </button>
           )
         })}
@@ -331,7 +331,7 @@ export function CalendarHeat({
         <span className="min-h-[18px] truncate">
           {h && (
             <>
-              <span className="figure font-semibold text-foreground">{format(h.total)}</span> · {dateLabel(h.date, { weekday: "short", month: "short", day: "numeric" })} · {tn(h.count, "{n} entry", "{n} entries")}
+              <span className={cn("figure font-semibold text-foreground", h.total < 0 && "text-red")}>{format(h.total)}</span> · {dateLabel(h.date, { weekday: "short", month: "short", day: "numeric" })} · {tn(h.count, "{n} entry", "{n} entries")}
             </>
           )}
         </span>
