@@ -345,9 +345,9 @@ export function CalendarHeat({
   )
 }
 
-type Part = { name: string; color: string; total: number; count: number; other?: boolean; members?: string[] }
+type Part = { name: string; color: string; total: number; count: number }
 
-/** A group picked in a donut: its own name, or for "Other" the names folded into it. */
+/** A group picked in a donut. */
 export interface DonutPick {
   key: string
   label: string
@@ -355,26 +355,6 @@ export interface DonutPick {
   color: string
   total: number
   count: number
-}
-
-const OTHER_KEY = "\u0000other"
-
-/** Slices past the sixth fold into "Other", so each one stays big enough to read. */
-function foldParts(data: Part[], max = 7): Part[] {
-  const pos = data.filter((d) => d.total > 0)
-  if (pos.length <= max) return pos
-  const rest = pos.slice(max - 1)
-  return [
-    ...pos.slice(0, max - 1),
-    {
-      name: t("Other"),
-      color: "gray",
-      total: rest.reduce((s, d) => s + d.total, 0),
-      count: rest.reduce((s, d) => s + d.count, 0),
-      other: true,
-      members: rest.map((d) => d.name),
-    },
-  ]
 }
 
 /** One donut slice from angle a0 to a1 (radians, clockwise from 12 o'clock). */
@@ -414,14 +394,14 @@ export function Donut({
   onPick?: (p: DonutPick | null) => void
 }) {
   const [hover, setHover] = useState<number | null>(null)
-  const parts = foldParts(data)
-  const keyOf = (d: Part) => (d.other ? OTHER_KEY : d.name)
-  const pickedIndex = picked === null ? -1 : parts.findIndex((d) => keyOf(d) === picked)
+  // Every group with spending gets its slice, however small.
+  const parts = data.filter((d) => d.total > 0)
+  const pickedIndex = picked === null ? -1 : parts.findIndex((d) => d.name === picked)
   const focus = hover ?? (pickedIndex >= 0 ? pickedIndex : null)
   const toggle = (d: Part) => {
     if (!onPick) return
-    if (keyOf(d) === picked) return onPick(null)
-    onPick({ key: keyOf(d), label: d.name || t("None"), names: d.members ?? [d.name], color: d.name && !d.other ? d.color : "gray", total: d.total, count: d.count })
+    if (d.name === picked) return onPick(null)
+    onPick({ key: d.name, label: d.name || t("None"), names: [d.name], color: d.name ? d.color : "gray", total: d.total, count: d.count })
   }
   const sum = parts.reduce((s, d) => s + d.total, 0)
   if (parts.length === 0) return <p className="py-6 text-[13.5px] text-ink-2">{t("Nothing this month.")}</p>
@@ -436,7 +416,7 @@ export function Donut({
   const name = (d: Part) => d.name || t("None")
   const share = (v: number) => {
     const pct = (v / sum) * 100
-    return `${pct.toFixed(pct < 10 ? 1 : 0)}%`
+    return pct < 0.05 ? "<0.1%" : `${pct.toFixed(pct < 10 ? 1 : 0)}%`
   }
 
   return (
@@ -447,7 +427,7 @@ export function Donut({
             <path
               key={name(d)}
               d={arcPath(c, c, r0, r1, a0, a1)}
-              data-color={d.name && !d.other ? d.color : "gray"}
+              data-color={d.name ? d.color : "gray"}
               fill="var(--sw)"
               stroke="var(--sheet)"
               strokeWidth={slices.length > 1 ? 2 : 0}
@@ -479,7 +459,7 @@ export function Donut({
           const body = (
             <>
               <span className="dot" />
-              <span className={cn("min-w-0 flex-1 truncate", (!d.name || d.other) && "text-ink-2")}>{name(d)}</span>
+              <span className={cn("min-w-0 flex-1 truncate", !d.name && "text-ink-2")}>{name(d)}</span>
               <span className="font-medium tabular-nums">{format(d.total)}</span>
               <span className="w-11 text-right text-[12.5px] text-ink-2 tabular-nums">{share(d.total)}</span>
             </>
@@ -490,7 +470,7 @@ export function Donut({
           )
           const title = `${name(d)}: ${format(d.total)}, ${tn(d.count, "{n} entry", "{n} entries")}`
           return (
-            <li key={name(d)} data-color={d.name && !d.other ? d.color : "gray"} onMouseEnter={() => setHover(i)}>
+            <li key={name(d)} data-color={d.name ? d.color : "gray"} onMouseEnter={() => setHover(i)}>
               {onPick ? (
                 <button type="button" title={title} className={row} aria-pressed={i === pickedIndex} onClick={() => toggle(d)}>
                   {body}

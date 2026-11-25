@@ -197,7 +197,6 @@ export const ZH: Record<string, string> = {
   "Spending by card": "按支付方式的支出",
   "{n} card": "{n} 种支付方式",
   "{n} cards": "{n} 种支付方式",
-  "Other": "其他",
   "Day by day": "每日支出",
   "Monthly spending": "每月支出",
   "Spending in each of the last twelve months": "最近十二个月每月的支出",
