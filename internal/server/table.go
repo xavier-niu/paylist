@@ -162,9 +162,13 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.csv"`, name))
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"Name", "Type", "Amount", "Date", "Card"})
+	_ = cw.Write([]string{"Name", "Type", "Amount", "Date", "Card", "Original amount", "Original currency"})
 	for _, e := range entries {
-		_ = cw.Write([]string{csvSafe(e.Name), csvSafe(e.Type), strconv.FormatFloat(e.Amount, 'f', 2, 64), e.Date, csvSafe(e.Card)})
+		orig := ""
+		if e.OrigAmount != nil {
+			orig = strconv.FormatFloat(*e.OrigAmount, 'f', 2, 64)
+		}
+		_ = cw.Write([]string{csvSafe(e.Name), csvSafe(e.Type), strconv.FormatFloat(e.Amount, 'f', 2, 64), e.Date, csvSafe(e.Card), orig, e.OrigCurrency})
 	}
 	cw.Flush()
 }

@@ -182,6 +182,11 @@ var migrations = []string{
 	DROP TABLE entries;
 	ALTER TABLE entries_new RENAME TO entries;
 	CREATE INDEX entries_ledger_date ON entries(ledger_id, date);`,
+
+	// 3: what an entry paid in another currency was: its amount there (in
+	// cents) and the currency; the entry's amount is in the ledger's.
+	`ALTER TABLE entries ADD COLUMN orig_amount INTEGER;
+	ALTER TABLE entries ADD COLUMN orig_currency TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

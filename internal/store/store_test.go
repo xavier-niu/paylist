@@ -535,6 +535,58 @@ func TestStatsTrends(t *testing.T) {
 	}
 }
 
+func TestEntryOriginal(t *testing.T) {
+	ctx := context.Background()
+	st, u := newStore(t)
+	L := personal(t, st, u)
+	usd, amount, orig := "USD", 83.31, 12.5
+	in := entry("Hotel deposit", "Travel", amount, "2026-11-24", "")
+	in.OrigAmount, in.OrigCurrency = &orig, &usd
+	got, err := st.CreateEntries(ctx, L, []EntryInput{in})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := got[0]
+	if e.Amount != 83.31 || e.OrigAmount == nil || *e.OrigAmount != 12.5 || e.OrigCurrency != "USD" {
+		t.Fatalf("saved: %+v", e)
+	}
+	// Other changes, and the same amount again, keep it.
+	name, same := "Hotel", 83.31
+	if e2, _ := st.UpdateEntry(ctx, L, e.ID, EntryInput{Name: &name, Amount: &same}); e2.OrigCurrency != "USD" || *e2.OrigAmount != 12.5 {
+		t.Errorf("kept: %+v", e2)
+	}
+	// A new amount by itself drops it: it no longer matches.
+	other := 90.0
+	if e3, _ := st.UpdateEntry(ctx, L, e.ID, EntryInput{Amount: &other}); e3.OrigCurrency != "" || e3.OrigAmount != nil {
+		t.Errorf("not dropped: %+v", e3)
+	}
+	// Set again with the amount, then cleared by an empty code.
+	eur, back := "eur", 11.0
+	if e4, _ := st.UpdateEntry(ctx, L, e.ID, EntryInput{Amount: &other, OrigAmount: &back, OrigCurrency: &eur}); e4.OrigCurrency != "EUR" || *e4.OrigAmount != 11 {
+		t.Errorf("set: %+v", e4)
+	}
+	none := ""
+	if e5, _ := st.UpdateEntry(ctx, L, e.ID, EntryInput{OrigCurrency: &none}); e5.OrigCurrency != "" || e5.OrigAmount != nil || e5.Amount != 90 {
+		t.Errorf("cleared: %+v", e5)
+	}
+	// A bad code, or a code without an amount, is refused.
+	bad := "dollars"
+	in.OrigCurrency = &bad
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{in}); err == nil {
+		t.Error("a bad currency was accepted")
+	}
+	in.OrigCurrency, in.OrigAmount = &usd, nil
+	if _, err := st.CreateEntries(ctx, L, []EntryInput{in}); err == nil {
+		t.Error("a currency without its amount was accepted")
+	}
+	// A refund that matches nothing keeps what came back in the other currency, negative.
+	refAmount, refOrig := 53.32, 8.0
+	res, err := st.Refund(ctx, L, RefundInput{Name: "Museum", Amount: &refAmount, Type: "Travel", OrigAmount: &refOrig, OrigCurrency: "USD"}, time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC))
+	if err != nil || res.Added == nil || res.Added.Amount != -53.32 || res.Added.OrigAmount == nil || *res.Added.OrigAmount != -8 || res.Added.OrigCurrency != "USD" {
+		t.Fatalf("refund: %+v %v", res, err)
+	}
+}
+
 // Writes at once (the agent in the background, Undo restoring several) all
 // land: one waits for the other rather than failing.
 func TestConcurrentWrites(t *testing.T) {

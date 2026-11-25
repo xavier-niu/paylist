@@ -26,6 +26,10 @@ type RefundInput struct {
 	Type   string   `json:"type,omitempty"`
 	Card   string   `json:"card,omitempty"`
 	Date   string   `json:"date,omitempty"` // today when empty
+	// Paid back in another currency: how much there, and its code. Amount
+	// is still the ledger's, and is what's matched.
+	OrigAmount   *float64 `json:"orig_amount,omitempty"`
+	OrigCurrency string   `json:"orig_currency,omitempty"`
 }
 
 // RefundResult is what a refund did: deleted one purchase, added a negative
@@ -108,7 +112,12 @@ func (s *Store) Refund(ctx context.Context, ledgerID int64, in RefundInput, toda
 		date = today.Format(dateLayout)
 	}
 	typ, card := strings.TrimSpace(in.Type), strings.TrimSpace(in.Card)
-	added, err := s.CreateEntries(ctx, ledgerID, []EntryInput{{Name: &name, Amount: &amount, Date: &date, Type: &typ, Card: &card}})
+	add := EntryInput{Name: &name, Amount: &amount, Date: &date, Type: &typ, Card: &card}
+	if in.OrigCurrency != "" && in.OrigAmount != nil {
+		orig, cur := -math.Abs(*in.OrigAmount), in.OrigCurrency
+		add.OrigAmount, add.OrigCurrency = &orig, &cur
+	}
+	added, err := s.CreateEntries(ctx, ledgerID, []EntryInput{add})
 	if err != nil {
 		return nil, err
 	}

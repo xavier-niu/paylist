@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -30,6 +31,9 @@ type Entry struct {
 	Card      string  `json:"card"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
+	// Paid in another currency: what it was there (Amount is in the ledger's).
+	OrigAmount   *float64 `json:"orig_amount,omitempty"`
+	OrigCurrency string   `json:"orig_currency,omitempty"`
 }
 
 // EntryInput is a new entry, or the fields of one to change (nil: unchanged).
@@ -39,6 +43,33 @@ type EntryInput struct {
 	Amount *float64 `json:"amount"`
 	Date   *string  `json:"date"`
 	Card   *string  `json:"card"`
+	// Paid in another currency: the amount there and its code (USD); an
+	// empty code clears them. Amount is still the ledger's. A change to
+	// Amount alone clears them too: they'd no longer match.
+	OrigAmount   *float64 `json:"orig_amount"`
+	OrigCurrency *string  `json:"orig_currency"`
+}
+
+var currencyRE = regexp.MustCompile(`^[A-Z]{3}$`)
+
+// origFields checks what an entry paid in another currency was: NULL and ""
+// for none.
+func origFields(amount *float64, currency *string) (sql.NullInt64, string, error) {
+	if currency == nil || strings.TrimSpace(*currency) == "" {
+		return sql.NullInt64{}, "", nil
+	}
+	cur := strings.ToUpper(strings.TrimSpace(*currency))
+	if !currencyRE.MatchString(cur) {
+		return sql.NullInt64{}, "", fmt.Errorf("the currency %q must be a three-letter code, such as USD", *currency)
+	}
+	if amount == nil {
+		return sql.NullInt64{}, "", fmt.Errorf("say how much it was in %s", cur)
+	}
+	cents, err := toCents(*amount)
+	if err != nil {
+		return sql.NullInt64{}, "", err
+	}
+	return sql.NullInt64{Int64: cents, Valid: true}, cur, nil
 }
 
 func toCents(amount float64) (int64, error) {
@@ -88,18 +119,23 @@ func cleanEntryName(name string) (string, error) {
 	return name, nil
 }
 
-const entryCols = `id, name, type, amount, date, card, created_at, updated_at`
+const entryCols = `id, name, type, amount, date, card, created_at, updated_at, orig_amount, orig_currency`
 
 func scanEntry(row interface{ Scan(...any) error }) (*Entry, error) {
 	var e Entry
 	var cents int64
-	if err := row.Scan(&e.ID, &e.Name, &e.Type, &cents, &e.Date, &e.Card, &e.CreatedAt, &e.UpdatedAt); err != nil {
+	var orig sql.NullInt64
+	if err := row.Scan(&e.ID, &e.Name, &e.Type, &cents, &e.Date, &e.Card, &e.CreatedAt, &e.UpdatedAt, &orig, &e.OrigCurrency); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
 	e.Amount = fromCents(cents)
+	if orig.Valid && e.OrigCurrency != "" {
+		v := fromCents(orig.Int64)
+		e.OrigAmount = &v
+	}
 	return &e, nil
 }
 
@@ -213,6 +249,10 @@ func (s *Store) insertEntry(ctx context.Context, tx *sql.Tx, ledgerID int64, in 
 	if err != nil {
 		return 0, err
 	}
+	orig, origCur, err := origFields(in.OrigAmount, in.OrigCurrency)
+	if err != nil {
+		return 0, err
+	}
 	var typ, card string
 	if in.Type != nil {
 		if typ, err = s.ensureOption(ctx, tx, ledgerID, KindType, *in.Type, ""); err != nil {
@@ -225,8 +265,8 @@ func (s *Store) insertEntry(ctx context.Context, tx *sql.Tx, ledgerID int64, in 
 		}
 	}
 	ts := now()
-	res, err := tx.ExecContext(ctx, `INSERT INTO entries (ledger_id, name, type, amount, date, card, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, ledgerID, name, typ, cents, d.Format(dateLayout), card, ts, ts)
+	res, err := tx.ExecContext(ctx, `INSERT INTO entries (ledger_id, name, type, amount, date, card, created_at, updated_at, orig_amount, orig_currency)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ledgerID, name, typ, cents, d.Format(dateLayout), card, ts, ts, orig, origCur)
 	if err != nil {
 		return 0, err
 	}
@@ -245,6 +285,13 @@ func (s *Store) UpdateEntry(ctx context.Context, ledgerID, id int64, in EntryInp
 		return nil, err
 	}
 	cents, _ := toCents(e.Amount)
+	was := cents
+	var orig sql.NullInt64
+	if e.OrigAmount != nil {
+		orig.Int64, _ = toCents(*e.OrigAmount)
+		orig.Valid = true
+	}
+	origCur := e.OrigCurrency
 	if in.Name != nil {
 		if e.Name, err = cleanEntryName(*in.Name); err != nil {
 			return nil, err
@@ -272,8 +319,17 @@ func (s *Store) UpdateEntry(ctx context.Context, ledgerID, id int64, in EntryInp
 			return nil, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE entries SET name = ?, type = ?, amount = ?, date = ?, card = ?, updated_at = ?
-		WHERE ledger_id = ? AND id = ?`, e.Name, e.Type, cents, e.Date, e.Card, now(), ledgerID, id); err != nil {
+	switch {
+	case in.OrigCurrency != nil:
+		if orig, origCur, err = origFields(in.OrigAmount, in.OrigCurrency); err != nil {
+			return nil, err
+		}
+	case cents != was:
+		// The amount changed by itself: what was paid elsewhere no longer matches it.
+		orig, origCur = sql.NullInt64{}, ""
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE entries SET name = ?, type = ?, amount = ?, date = ?, card = ?, orig_amount = ?, orig_currency = ?, updated_at = ?
+		WHERE ledger_id = ? AND id = ?`, e.Name, e.Type, cents, e.Date, e.Card, orig, origCur, now(), ledgerID, id); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
