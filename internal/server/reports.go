@@ -57,6 +57,49 @@ type reportLedger struct {
 	// the month so far), furthest first.
 	Higher []typeChange `json:"higher"`
 	Lower  []typeChange `json:"lower"`
+	// Daily and weekly: how the month the report is sent in is going.
+	Month *monthPace `json:"month,omitempty"`
+}
+
+// monthPace is how a month is going, up to the day before today: what it has
+// spent, what it usually has by then and in all, where it ends if the rest
+// goes as usual, and what is left to end it at its usual.
+type monthPace struct {
+	Month       string  `json:"month"` // YYYY-MM
+	SoFar       float64 `json:"so_far"`
+	UsualByNow  float64 `json:"usual_by_now"`
+	UsualMonth  float64 `json:"usual_month"`
+	Estimate    float64 `json:"estimate"`      // so far, and the rest of the month as usual
+	LeftAtUsual float64 `json:"left_at_usual"` // to spend in the rest of it to end at its usual; below 0, already over
+	DaysLeft    int     `json:"days_left"`     // today included
+}
+
+// monthPace is how the month today is in is going, up to yesterday; nil on
+// its 1st, or without months before to compare with.
+func (s *Server) monthPace(ctx context.Context, ledgerID int64, today time.Time) (*monthPace, error) {
+	d := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+	if d.Day() == 1 {
+		return nil, nil
+	}
+	month, last := d.Format("2006-01"), d.AddDate(0, 1, -d.Day())
+	byNow, err := s.opts.Store.GetStats(ctx, ledgerID, month, 1, d.AddDate(0, 0, -1))
+	if err != nil || byNow.AvgMonths == 0 {
+		return nil, err
+	}
+	whole, err := s.opts.Store.GetStats(ctx, ledgerID, month, 1, last)
+	if err != nil {
+		return nil, err
+	}
+	r := func(v float64) float64 { return math.Round(v*100) / 100 }
+	return &monthPace{
+		Month:       month,
+		SoFar:       byNow.ToDate,
+		UsualByNow:  byNow.AvgToDate,
+		UsualMonth:  whole.AvgToDate,
+		Estimate:    r(byNow.ToDate + whole.AvgToDate - byNow.AvgToDate),
+		LeftAtUsual: r(whole.AvgToDate - byNow.ToDate),
+		DaysLeft:    last.Day() - d.Day() + 1,
+	}, nil
 }
 
 type typeChange struct {
@@ -105,6 +148,11 @@ func (s *Server) buildReport(ctx context.Context, u *store.User, l *store.Ledger
 	figures, err := s.reportLedger(ctx, l, period, from, to, today)
 	if err != nil {
 		return nil, err
+	}
+	if period != store.ReportMonthly {
+		if figures.Month, err = s.monthPace(ctx, l.ID, today); err != nil {
+			return nil, err
+		}
 	}
 	rep := &report{Period: period, Ledger: l.Name, From: day(from), To: day(to), Figures: figures}
 	rep.Title = reportTitle(l.Name, lang)
@@ -389,7 +437,8 @@ const (
 
 	suggestRules = `# Rules
 
-- Use only what the figures and the tools show. You may name entries and their amounts, and a type's usual amount; don't restate the report's totals and percentages, and never make up a number.
+- Use only what the figures and the tools show. You may name entries and their amounts, a type's usual amount, and the month's figures, and work out simple sums from them, such as what's left per day or per week; don't restate the report's totals and percentages, and never make up a number.
+- When "left_to_end_at_usual" is below zero, the month is already past its usual: say so plainly, and suggest keeping the rest of it light rather than a sum to stay under.
 - The tools only read the ledger; without "ledger" they use the report's.
 - Keep the user's names for types and entries exactly as they are, whatever language they're in.
 - Leave out what was ordinary, and give nothing generic, such as "make a budget" or "track your spending".
@@ -402,14 +451,14 @@ const (
 var suggestPrompts = map[string]string{
 	store.ReportDaily: `# The report
 
-A daily report: what was spent yesterday, against a usual day (the average of the 28 days before it); then the month so far, against what the months before had spent by the same day. Its types are the month so far's against their usual by then (types_higher_than_usual_this_month_so_far and types_lower_than_usual_this_month_so_far), as a single day is too little to judge a type by.
+A daily report: what was spent yesterday, against a usual day (the average of the 28 days before it); then the month so far, against what the months before had spent by the same day. Its types are the month so far's against their usual by then (types_higher_than_usual_this_month_so_far and types_lower_than_usual_this_month_so_far), as a single day is too little to judge a type by. "this_month" is how the month is going, up to yesterday: what it has spent, what it usually has by now and in all, where it ends if the rest goes as usual, and what is left to end it at its usual, over the days left.
 
 # What to write
 
 One paragraph, about 50 to 100 words (a guide, not a limit). A day is noisy, as one dinner out can double it, so read yesterday together with the month so far:
 
 1. What stands out: yesterday, if it was far from a usual day, and what it went on; and the type pulling the month furthest from its usual, in money, and what is behind it (one large purchase, a run of small ones, something new).
-2. One concrete step for today and the rest of the month that would bring the month back to its usual, or keep it below: tied to what you found, such as a type to go easy on or a purchase to put off. If the month is on track, say so and what keeps it there.
+2. Where the month is heading, from "this_month": when it is running above its usual, say where it ends if the rest goes as usual, and how to pace the days left to end at its usual (what's left, per day). Then one concrete step for today and the rest of the month, tied to what you found, such as a type to go easy on or a purchase to put off. If the month is on track, say so and what keeps it there.
 
 # How to find out
 
@@ -419,16 +468,19 @@ list_entries with yesterday's date shows what was bought; with a type and the mo
 
 A weekly report, sent on Monday: what was spent last week (Monday to Sunday), overall and by type, against a usual week (the average of up to 8 weeks before). Types that come and go, such as rent paid once a month, are left out of the types compared.
 
+A week is also part of a month, and a few heavy weeks can push the month over its usual even when no single week looks alarming. "this_month" is how the month this report is sent in is going, up to yesterday: what it has spent, what it usually has by now and in all, where it ends if the rest goes as usual, and what is left to end it at its usual, over the days left.
+
 # What to write
 
 One paragraph, about 80 to 150 words (a guide, not a limit):
 
 1. What was unusual last week, and why: the one or two types that moved most in money, and what is behind each (one large purchase, a run of small ones, something new, or something that usually happens and didn't). Note a pattern within the week when there is one, such as most of it at the weekend or the same place again and again.
-2. One or two concrete steps for this week that would keep its spending at or below a usual week: tied to what you found, such as holding a type to about its usual amount or putting off a purchase like the one that stood out. If last week was below usual, say what to keep doing.
+2. Where the month is heading: when it is running above its usual, as several heavy weeks can make it, say where it ends if the rest goes as usual, and how to pace the rest of it to end at its usual: what's left, per week or per day over the days left. When it is on track or below, say so in a few words.
+3. One or two concrete steps for this week and the rest of the month that would keep spending at or below its usual: tied to what you found, such as holding a type to about its usual amount or putting off a purchase like the one that stood out. If last week was below usual, say what to keep doing.
 
 # How to find out
 
-list_entries with last week's dates, and a type, shows the entries behind a change; the same for the weeks before tells a one-off from a trend. Two or three calls are usually enough; then write.`,
+list_entries with last week's dates, and a type, shows the entries behind a change; the same for the weeks before tells a one-off from a trend, and with the month's dates so far, which types are pushing the month up. Two or three calls are usually enough; then write.`,
 
 	store.ReportMonthly: `# The report
 
@@ -530,6 +582,17 @@ func reportFacts(rep *report) map[string]any {
 		spent = append(spent, map[string]string{"type": n, "spent": m(g.Total)})
 	}
 	f["spent_by_type"] = spent
+	if p := l.Month; p != nil {
+		f["this_month"] = map[string]any{
+			"month":                     p.Month,
+			"spent_so_far":              m(p.SoFar),
+			"usual_by_now":              m(p.UsualByNow),
+			"usual_whole_month":         m(p.UsualMonth),
+			"if_the_rest_goes_as_usual": m(p.Estimate),
+			"left_to_end_at_usual":      m(p.LeftAtUsual),
+			"days_left_including_today": p.DaysLeft,
+		}
+	}
 	return f
 }
 

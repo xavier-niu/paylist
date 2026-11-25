@@ -97,6 +97,12 @@ func TestReports(t *testing.T) {
 	if daily.From != "2026-11-24" || f.Total != 100 || f.Usual == nil || *f.Usual != 7.7 || *f.MonthToDate != 315.5 || daily.Suggestion != "" {
 		t.Fatalf("daily: %+v %+v", daily, f)
 	}
+	// The month it's sent in (Sep and Oct before it, ¥3,200 on average): ¥315.50
+	// so far against ¥3,200 by now; the rest as usual adds nothing, so it
+	// ends at ¥315.50, with ¥2,884.50 left over 6 days to end at its usual.
+	if p := f.Month; p == nil || *p != (monthPace{Month: "2026-11", SoFar: 315.5, UsualByNow: 3200, UsualMonth: 3200, Estimate: 315.5, LeftAtUsual: 2884.5, DaysLeft: 6}) {
+		t.Errorf("the month: %+v", p)
+	}
 	want := "Yesterday (Tue, Nov 24)\n  Total ¥100.00\n  ↑ much higher than usual (¥7.70 a day)\n\n" +
 		"Month so far\n  Total ¥315.50\n  ↓ much lower than usual (¥3,200.00 by now)\n\n" +
 		"By type, month so far\n    ↑ Transport (new)\n    ↓ Home -100%"
@@ -112,8 +118,15 @@ func TestReports(t *testing.T) {
 		t.Errorf("weekly:\n%s\n%s\nwant\n%s", weekly.Title, weekly.Text, want)
 	}
 
+	if weekly.Figures.Month == nil || weekly.Figures.Month.LeftAtUsual != 2884.5 {
+		t.Errorf("a weekly report's month: %+v", weekly.Figures.Month)
+	}
+
 	// Last month against the usual month.
 	monthly, _ := s.buildReport(t.Context(), u, l, store.ReportMonthly, "en", true, today)
+	if monthly.Figures.Month != nil {
+		t.Errorf("a monthly report has the month it's sent in: %+v", monthly.Figures.Month)
+	}
 	want = "October 2026\n  Total ¥3,400.00\n  ≈ about usual (¥3,000.00 a month)\n\nBy type\n    ↑ Food (new)"
 	if monthly.From != "2026-10-01" || monthly.Text != want {
 		t.Errorf("monthly:\n%s\nwant\n%s", monthly.Text, want)
@@ -198,7 +211,7 @@ func TestReportByModel(t *testing.T) {
 	if len(asked) != 2 {
 		t.Fatalf("asked the model %d times, want 2", len(asked))
 	}
-	for _, fact := range []string{"Simplified Chinese", "much higher than usual", "¥7.70", "Personal", "types_lower_than_usual_this_month_so_far", "spent_by_type", "50 to 100 words", "the 28 days before", "for today and the rest of the month", `"name":"list_entries"`, `"name":"get_stats"`} {
+	for _, fact := range []string{"Simplified Chinese", "much higher than usual", "¥7.70", "Personal", "types_lower_than_usual_this_month_so_far", "spent_by_type", "50 to 100 words", "the 28 days before", "for today and the rest of the month", `left_to_end_at_usual\":\"¥2,884.50`, `days_left_including_today\":6`, `"name":"list_entries"`, `"name":"get_stats"`} {
 		if !strings.Contains(asked[0], fact) {
 			t.Errorf("the model wasn't told %q", fact)
 		}
@@ -259,6 +272,10 @@ func TestSuggestPrompts(t *testing.T) {
 			if !strings.Contains(p, part) {
 				t.Errorf("%s: no %q", period, part)
 			}
+		}
+		// The days and weeks look at where the month is heading; a month is done.
+		if pace := strings.Contains(suggestPrompt(period, "en"), "this_month"); pace == (period == store.ReportMonthly) {
+			t.Errorf("%s: about the month ahead: %v", period, pace)
 		}
 	}
 }
