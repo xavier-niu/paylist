@@ -69,7 +69,7 @@ export function LedgerSettingsDialog({ id, onClose }: { id: number | null; onClo
   }, [id, ledger, onClose])
   return (
     <Dialog open={!!ledger} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-[20px] border border-rule-2 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3)] ring-0 sm:max-w-[680px]">
+      <DialogContent data-sheet className="flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-[20px] border border-rule-2 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3)] ring-0 sm:max-w-[680px]">
         {ledger && <LedgerSettings key={ledger.id} ledger={ledger} />}
       </DialogContent>
     </Dialog>

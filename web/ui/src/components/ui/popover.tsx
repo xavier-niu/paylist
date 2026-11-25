@@ -4,10 +4,14 @@ import * as React from "react"
 import { cn } from "cn"
 import { Popover as PopoverPrimitive } from "radix-ui"
 
+/** On phones a picker covers the page (see index.css), so a tap beside it only closes it, and reaches nothing under it. */
+const isPhone = () => typeof window !== "undefined" && window.matchMedia("(width < 40rem)").matches
+
 function Popover({
+  modal,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+  return <PopoverPrimitive.Root data-slot="popover" modal={modal ?? isPhone()} {...props} />
 }
 
 function PopoverTrigger({

@@ -33,7 +33,7 @@ export function EntryList({
   const total = (entries ?? []).reduce((s, e) => s + Math.round(e.amount * 100), 0) / 100
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[80vh] flex-col gap-0 overflow-hidden rounded-[20px] border border-rule-2 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3)] ring-0 sm:max-w-[620px]">
+      <DialogContent data-sheet className="flex max-h-[80vh] flex-col gap-0 overflow-hidden rounded-[20px] border border-rule-2 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3)] ring-0 sm:max-w-[620px]">
         <div className="flex shrink-0 items-baseline gap-3 border-b border-rule px-6 pt-5 pb-4 pr-14">
           <DialogTitle className="flex min-w-0 items-center gap-2 text-[17px] font-semibold">
             {color && <span className="dot" data-color={color} />}
@@ -65,10 +65,13 @@ export function EntryList({
                   type="button"
                   disabled={!canWrite}
                   onClick={() => editEntry(e)}
-                  className={cn("flex h-10 w-full items-center gap-3 rounded-[10px] px-4 text-left text-[14px]", canWrite && "hover:bg-wash")}
+                  className={cn("flex min-h-10 w-full items-center gap-3 rounded-[10px] px-4 py-1.5 text-left text-[14px] sm:py-0", canWrite && "hover:bg-wash")}
                 >
-                  {show.date && <span className="w-24 shrink-0 text-[13px] text-ink-2 tabular-nums">{dateLabel(e.date, { month: "short", day: "numeric", weekday: "short" })}</span>}
-                  <span className="min-w-0 flex-1 truncate">{e.name}</span>
+                  {/* On phones the date goes under the name, leaving the name the row's width. */}
+                  <span className="grid min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+                    <span className="truncate sm:order-2 sm:min-w-0 sm:flex-1">{e.name}</span>
+                    {show.date && <span className="text-[12.5px] text-ink-2 tabular-nums sm:order-1 sm:w-24 sm:shrink-0 sm:text-[13px]">{dateLabel(e.date, { month: "short", day: "numeric", weekday: "short" })}</span>}
+                  </span>
                   {show.type && <span className="w-32 shrink-0">{e.type && <Tag name={e.type} color={optionColor(options, "type", e.type)} className="!shadow-none !bg-transparent !px-0 text-[13px] text-ink-2" />}</span>}
                   {show.card && <span className="w-32 shrink-0 max-sm:hidden">{e.card && <Tag name={e.card} color={optionColor(options, "card", e.card)} className="!shadow-none !bg-transparent !px-0 text-[13px] text-ink-2" />}</span>}
                   <span className={cn("w-28 shrink-0 text-right tabular-nums", e.amount < 0 && "text-good")}>{money(e.amount, currency)}</span>

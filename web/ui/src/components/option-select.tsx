@@ -113,6 +113,7 @@ export function OptionSelect({
           </button>
         </PopoverTrigger>
         <PopoverContent
+          data-sheet
           align="start"
           sideOffset={2}
           className="w-64 gap-0 overflow-hidden rounded-[14px] border border-rule-2 p-0 shadow-[0_16px_48px_rgb(0_0_0/.18)] ring-0"

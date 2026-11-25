@@ -316,9 +316,9 @@ export function AgentView({ chatId }: { chatId: string }) {
               <HistoryIcon /> {t("History")}
             </button>
           </PopoverTrigger>
-          <PopoverContent align="end" sideOffset={8} className="w-80 gap-0 rounded-[14px] border border-rule-2 p-1.5 shadow-[0_16px_48px_rgb(0_0_0/.18)] ring-0">
+          <PopoverContent data-sheet align="end" sideOffset={8} className="w-80 gap-0 rounded-[14px] border border-rule-2 p-1.5 shadow-[0_16px_48px_rgb(0_0_0/.18)] ring-0">
             {chats.length === 0 && <p className="px-2.5 py-2 text-[13.5px] text-ink-2">{t("No conversations yet.")}</p>}
-            <div className="max-h-96 overflow-y-auto">
+            <div data-list className="max-h-96 overflow-y-auto">
               {chats.map((c) => (
                 <div key={c.id} className="group relative">
                   <a href={`#/agent/${c.id}`} className={cn("block rounded-[10px] py-2 pr-9 pl-2.5 hover:bg-wash", c.id === active && "bg-wash")} title={c.title}>
