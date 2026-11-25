@@ -297,6 +297,46 @@ function PreferencesSection() {
   )
 }
 
+/** Who you are to others: your email, and the name they see you by (in history, shared ledgers). */
+function AccountSection() {
+  const { user, setUser } = useApp()
+  const [name, setName] = useState(user.name)
+  useEffect(() => setName(user.name), [user.name])
+  const save = async () => {
+    if (name.trim() === user.name) return
+    try {
+      const u = await api.setName(name)
+      setUser({ ...user, name: u.name })
+      setName(u.name)
+      toast.success(u.name ? t("You're {name} now.", { name: u.name }) : t("Others see your email now."))
+    } catch (e) {
+      toast.error((e as Error).message)
+      setName(user.name)
+    }
+  }
+  return (
+    <Section id="account" title={t("Your account")}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label={t("Name")} htmlFor="account-name">
+          <input
+            id="account-name"
+            className="field"
+            value={name}
+            maxLength={60}
+            placeholder={t("How others see you")}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => void save()}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          />
+        </Field>
+        <Field label={t("Email")}>
+          <span className="flex h-[34px] items-center truncate px-1 text-[14px] text-ink-2">{user.email}</span>
+        </Field>
+      </div>
+    </Section>
+  )
+}
+
 function PasswordSection() {
   const [current, setCurrent] = useState("")
   const [next, setNext] = useState("")
@@ -328,8 +368,36 @@ function PasswordSection() {
   )
 }
 
+/** An account's name in the admin's list, changed in place: unique, and empty shows the email. */
+function AccountName({ u, onSaved }: { u: User; onSaved: (name: string) => void }) {
+  const [name, setName] = useState(u.name)
+  useEffect(() => setName(u.name), [u.name])
+  const save = async () => {
+    if (name.trim() === u.name) return
+    try {
+      const saved = await api.setUserName(u.id, name)
+      onSaved(saved.name)
+    } catch (e) {
+      toast.error((e as Error).message)
+      setName(u.name)
+    }
+  }
+  return (
+    <input
+      value={name}
+      maxLength={60}
+      placeholder={t("Add a name")}
+      aria-label={t("Name of {email}", { email: u.email })}
+      onChange={(e) => setName(e.target.value)}
+      onBlur={() => void save()}
+      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+      className="h-8 w-full max-w-64 rounded-md bg-transparent px-1.5 text-[14px] font-medium outline-none placeholder:font-normal placeholder:text-muted-foreground hover:bg-wash focus:bg-sheet focus:shadow-[inset_0_0_0_1.5px_var(--ink)]"
+    />
+  )
+}
+
 function MembersSection() {
-  const { user } = useApp()
+  const { user, setUser } = useApp()
   const [users, setUsers] = useState<User[]>([])
   const [form, setForm] = useState({ email: "", name: "", password: "", is_admin: false })
   const [resetFor, setResetFor] = useState<{ id: number; pw: string } | null>(null)
@@ -374,9 +442,9 @@ function MembersSection() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id} className="border-b border-rule align-top">
-                <td className="py-2">
-                  <div className="font-medium">{u.name || u.email}</div>
-                  {u.name && <div className="text-[12.5px] text-muted-foreground">{u.email}</div>}
+                <td className="py-1.5">
+                  <AccountName u={u} onSaved={(n) => (u.id === user.id ? setUser({ ...user, name: n }) : undefined, void load())} />
+                  <div className="px-1.5 text-[12.5px] text-muted-foreground">{u.email}</div>
                   {resetFor?.id === u.id && (
                     <form onSubmit={reset} className="mt-2 flex gap-2">
                       <input id={`reset-${u.id}`} className="field !h-8" type="password" autoComplete="new-password" minLength={8} placeholder={t("New password")} autoFocus value={resetFor.pw} onChange={(e) => setResetFor({ id: u.id, pw: e.target.value })} />
@@ -438,6 +506,7 @@ export function SettingsView() {
     <div className="mx-auto w-full max-w-[1200px] px-4 pt-5 pb-16 sm:px-8">
       <PageHeader title={t("Settings")} />
       <div className="mx-auto mt-6 grid max-w-[700px] gap-8">
+        <AccountSection />
         <ModelSection />
         <AgentAccessSection />
         <PreferencesSection />

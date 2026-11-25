@@ -270,6 +270,8 @@ export const api = {
   setup: (email: string, name: string, password: string) => request<{ user: User }>("POST", "/api/auth/setup", { email, name, password }),
   logout: () => request<{ ok: boolean }>("POST", "/api/auth/logout", {}),
   savePrefs: (p: Partial<Prefs>) => request<Prefs>("PUT", "/api/me/prefs", p),
+  /** Your name, as others see you (unique; empty shows your email). */
+  setName: (name: string) => request<User>("PUT", "/api/me/name", { name }),
   changePassword: (current: string, next: string) => request<{ ok: boolean }>("PUT", "/api/me/password", { current, new: next }),
   saveModel: (preset: string, conf: ProviderConf, apiKey?: string | null) =>
     request<ModelSettings>("PUT", "/api/me/model", { preset, ...conf, ...(apiKey === undefined ? {} : { api_key: apiKey ?? "" }) }),
@@ -280,6 +282,8 @@ export const api = {
 
   users: () => request<User[]>("GET", "/api/admin/users"),
   createUser: (u: { email: string; name: string; password: string; is_admin: boolean }) => request<User>("POST", "/api/admin/users", u),
+  /** An admin naming an account (unique; empty shows the email). */
+  setUserName: (id: number, name: string) => request<User>("PUT", `/api/admin/users/${id}/name`, { name }),
   resetPassword: (id: number, password: string) => request<{ ok: boolean }>("PUT", `/api/admin/users/${id}/password`, { password }),
   deleteUser: (id: number) => request<{ ok: boolean }>("DELETE", `/api/admin/users/${id}`),
 
