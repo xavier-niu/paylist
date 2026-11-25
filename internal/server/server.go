@@ -35,6 +35,7 @@ type Server struct {
 	opts    Options
 	http    *http.Client
 	limiter *loginLimiter
+	runs    agentRuns // agent turns underway
 }
 
 func New(opts Options) *Server {
@@ -112,6 +113,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/chats", s.requireUser(s.handleListChats))
 	mux.HandleFunc("GET /api/chats/{id}", s.requireUser(s.handleGetChat))
 	mux.HandleFunc("DELETE /api/chats/{id}", s.requireUser(s.handleDeleteChat))
+	mux.HandleFunc("GET /api/chats/{id}/stream", s.requireUser(s.handleChatStream))
+	mux.HandleFunc("POST /api/chats/{id}/stop", s.requireUser(s.handleStopChat))
 	mux.HandleFunc("POST /api/agent/chat", s.withLedger(false, s.handleAgentChat))
 
 	// The table as an MCP server (Streamable HTTP), for agents that speak MCP.

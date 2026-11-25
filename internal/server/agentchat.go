@@ -34,17 +34,30 @@ const (
 	maxImageBytes     = 5 << 20  // what Claude takes for one image
 	maxFileBytes      = 10 << 20 // a PDF or a text file
 	maxAgentTurnBytes = 40 << 20 // the request, files included (base64 adds a third)
+
+	// The longest a turn runs at all; one that stalls is closed sooner, after
+	// agentIdleTimeout without progress.
+	maxAgentTurnTime = time.Hour
 )
 
 var chatIDRe = regexp.MustCompile(`^[a-f0-9]{8,64}$`)
 
 func (s *Server) handleListChats(w http.ResponseWriter, r *http.Request) {
-	chats, err := s.opts.Store.ListChats(r.Context(), currentUser(r.Context()).ID)
+	u := currentUser(r.Context())
+	chats, err := s.opts.Store.ListChats(r.Context(), u.ID)
 	if err != nil {
 		s.internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, chats)
+	type listed struct {
+		store.ChatSummary
+		Running bool `json:"running,omitempty"` // a turn is underway
+	}
+	out := make([]listed, len(chats))
+	for i, c := range chats {
+		out[i] = listed{c, s.runs.get(u.ID, c.ID) != nil}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleGetChat(w http.ResponseWriter, r *http.Request) {
@@ -62,10 +75,40 @@ func (s *Server) handleGetChat(w http.ResponseWriter, r *http.Request) {
 	for i := range msgs {
 		msgs[i].Raw = nil // the provider's own copy: not needed to show it
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat": c.ChatSummary, "messages": msgs})
+	out := map[string]any{"chat": c.ChatSummary, "messages": msgs}
+	// A turn underway: its events come from GET …/stream, from the message
+	// after turn_start on (those saved so far are among them).
+	if run := s.runs.get(currentUser(r.Context()).ID, c.ID); run != nil {
+		out["running"] = true
+		out["turn_start"] = run.turnStart
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleChatStream follows the turn underway in a conversation, from its
+// start, as NDJSON (the events of POST /api/agent/chat); with none, it is
+// just {"type":"done"}.
+func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
+	nd := newNDJSON(w)
+	if run := s.runs.get(currentUser(r.Context()).ID, r.PathValue("id")); run != nil {
+		run.follow(r.Context(), nd.send)
+		return
+	}
+	_ = nd.send(map[string]any{"type": "done"})
+}
+
+// handleStopChat stops the turn underway in a conversation.
+func (s *Server) handleStopChat(w http.ResponseWriter, r *http.Request) {
+	if run := s.runs.get(currentUser(r.Context()).ID, r.PathValue("id")); run != nil {
+		run.cancel()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleDeleteChat(w http.ResponseWriter, r *http.Request) {
+	if run := s.runs.get(currentUser(r.Context()).ID, r.PathValue("id")); run != nil {
+		run.cancel()
+	}
 	if err := s.opts.Store.DeleteChat(r.Context(), currentUser(r.Context()).ID, r.PathValue("id")); err != nil {
 		writeError(w, http.StatusNotFound, "No such conversation.")
 		return
@@ -118,13 +161,16 @@ func checkAttachments(in []llm.Attachment) ([]llm.Attachment, error) {
 	return out, nil
 }
 
-// handleAgentChat runs one turn: {chat_id?, message, attachments?, today?} → NDJSON events:
+// handleAgentChat starts a turn: {chat_id?, message, attachments?, today?},
+// and follows it as NDJSON events. The turn goes on if the page goes; GET
+// /api/chats/{id}/stream follows it again, and POST …/stop stops it.
 //
 //	{"type":"chat","id","title"}            the conversation (new or continued)
 //	{"type":"text","text"}                  a fragment of the reply
 //	{"type":"tool_call","call"}             a tool the model called…
 //	{"type":"tool_result","result"}         …and what it returned
 //	{"type":"notice","text"}                the reply was cut short, declined, …
+//	{"type":"stopped"}                      it was stopped
 //	{"type":"error","error","status"}       the turn failed
 //	{"type":"done"}
 func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
@@ -192,43 +238,69 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 		today = t
 	}
 
-	session, closeSession, err := s.agentSession(r.Context(), u, currentLedger(r.Context()))
+	// The turn's own context: it keeps the request's user and ledger, but
+	// not its end, so it runs on when the page goes.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), maxAgentTurnTime)
+	run := &agentRun{userID: u.ID, chatID: id, turnStart: len(history), cancel: cancel}
+	if !s.runs.start(run) {
+		cancel()
+		writeError(w, http.StatusConflict, "The agent is still answering in this conversation.")
+		return
+	}
+	session, closeSession, err := s.agentSession(ctx, u, currentLedger(r.Context()))
 	if err != nil {
+		s.runs.end(run)
+		cancel()
 		s.internalError(w, err)
 		return
 	}
-	defer closeSession()
-
-	nd := newNDJSON(w)
-	_ = nd.send(map[string]any{"type": "chat", "id": id, "title": title})
-	// Save the question at once, so the conversation is there even if the
-	// turn fails.
+	// Save as it goes: the question at once, so the conversation is there
+	// even if the turn fails, then after each step.
 	save := func(h []llm.Message) {
 		b, err := json.Marshal(h)
 		if err == nil {
-			err = s.opts.Store.SaveChat(context.WithoutCancel(r.Context()), u.ID, id, title, b)
+			err = s.opts.Store.SaveChat(context.WithoutCancel(ctx), u.ID, id, title, b)
 		}
 		if err != nil {
 			s.opts.Logger.Error("save agent chat", "err", err)
 		}
 	}
+	run.add(map[string]any{"type": "chat", "id": id, "title": title})
 	save(history)
 
 	l := currentLedger(r.Context())
 	system := agent.SystemPrompt(today, l.Name, l.Currency, l.Role)
-	history, err = agent.Run(r.Context(), client, session, system, history, func(e agent.Event) error {
-		return nd.send(e)
-	}, nil)
-	save(agent.Complete(history))
-	if err != nil && r.Context().Err() == nil {
-		status := http.StatusBadGateway
-		var le *llm.Error
-		if errors.As(err, &le) {
-			status = le.Status
+	go run.watch(ctx)
+	go func() {
+		defer cancel()
+		defer closeSession()
+		defer s.runs.end(run)
+		h, err := agent.Run(ctx, client, session, system, history, func(e agent.Event) error {
+			run.add(e)
+			return nil
+		}, func(h []llm.Message) { save(h) })
+		save(agent.Complete(h))
+		switch {
+		case err != nil && run.wasIdle():
+			run.add(map[string]any{"type": "error", "error": fmt.Sprintf("The agent made no progress for %d minutes, so the turn was closed.", int(agentIdleTimeout.Minutes())), "status": http.StatusGatewayTimeout})
+		case err != nil && errors.Is(ctx.Err(), context.Canceled):
+			run.add(map[string]any{"type": "stopped"})
+		case err != nil:
+			status := http.StatusBadGateway
+			var le *llm.Error
+			if errors.As(err, &le) {
+				status = le.Status
+			}
+			msg := err.Error()
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				msg = fmt.Sprintf("The turn ran longer than %d minutes and was stopped.", int(maxAgentTurnTime.Minutes()))
+			}
+			run.add(map[string]any{"type": "error", "error": msg, "status": status})
 		}
-		_ = nd.send(map[string]any{"type": "error", "error": err.Error(), "status": status})
-	}
-	_ = nd.send(map[string]any{"type": "done"})
+		run.add(map[string]any{"type": "done"})
+	}()
+
+	run.follow(r.Context(), newNDJSON(w).send)
 }
 
 // agentSession connects an MCP client to a server whose tools work on u's table.
