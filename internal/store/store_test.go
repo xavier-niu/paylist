@@ -69,6 +69,21 @@ func TestEntriesAndOptions(t *testing.T) {
 	if _, err := st.FindOption(ctx, L, KindCard, "visa"); err != nil {
 		t.Errorf("Visa wasn't made an option: %v", err)
 	}
+	// Each option's uses and last use; one never used has neither.
+	got := map[string]Option{}
+	opts, _ = st.ListOptions(ctx, L)
+	for _, o := range append(opts.Types, opts.Cards...) {
+		got[o.Kind+":"+o.Name] = o
+	}
+	if o := got["card:Cash"]; o.Uses != 1 || o.LastUsed != "2026-10-31" {
+		t.Errorf("Cash: %+v", o)
+	}
+	if o := got["type:Food"]; o.Uses != 1 || o.LastUsed != "2026-11-03" {
+		t.Errorf("Food: %+v", o)
+	}
+	if o := got["type:Travel"]; o.Uses != 0 || o.LastUsed != "" {
+		t.Errorf("Travel: %+v", o)
+	}
 
 	// All or nothing.
 	if _, err := st.CreateEntries(ctx, L, []EntryInput{entry("ok", "", 1, "2026-11-02", ""), entry("bad", "", 1, "2026-13-02", "")}); err == nil {

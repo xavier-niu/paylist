@@ -33,6 +33,9 @@ type Option struct {
 	Name  string `json:"name"`
 	Color string `json:"color"`
 	Uses  int    `json:"uses"` // how many entries have it
+	// The latest of their dates (YYYY-MM-DD), "" when none has it: an option
+	// long unused can be left out of the choices until it's looked for.
+	LastUsed string `json:"last_used,omitempty"`
 }
 
 type Options struct {
@@ -90,10 +93,10 @@ func (s *Store) seedOptions(ctx context.Context, ledgerID int64) error {
 }
 
 func (s *Store) ListOptions(ctx context.Context, ledgerID int64) (Options, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT o.id, o.kind, o.name, o.color,
-			(SELECT COUNT(*) FROM entries e WHERE e.ledger_id = o.ledger_id AND
-				CASE o.kind WHEN 'type' THEN e.type ELSE e.card END = o.name)
-		FROM options o WHERE o.ledger_id = ? ORDER BY o.kind, o.position, o.id`, ledgerID)
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id, o.kind, o.name, o.color, COUNT(e.id), COALESCE(MAX(e.date), '')
+		FROM options o LEFT JOIN entries e ON e.ledger_id = o.ledger_id AND
+			CASE o.kind WHEN 'type' THEN e.type ELSE e.card END = o.name
+		WHERE o.ledger_id = ? GROUP BY o.id ORDER BY o.kind, o.position, o.id`, ledgerID)
 	if err != nil {
 		return Options{}, err
 	}
@@ -101,7 +104,7 @@ func (s *Store) ListOptions(ctx context.Context, ledgerID int64) (Options, error
 	out := Options{Types: []Option{}, Cards: []Option{}}
 	for rows.Next() {
 		var o Option
-		if err := rows.Scan(&o.ID, &o.Kind, &o.Name, &o.Color, &o.Uses); err != nil {
+		if err := rows.Scan(&o.ID, &o.Kind, &o.Name, &o.Color, &o.Uses, &o.LastUsed); err != nil {
 			return Options{}, err
 		}
 		if o.Kind == KindType {
