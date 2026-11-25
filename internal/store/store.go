@@ -40,7 +40,10 @@ func Open(path string, secret []byte) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
+	// Transactions take the write lock as they begin (_txlock=immediate), so
+	// writes at once (the agent in the background, the page) wait their turn
+	// rather than failing with "database is locked".
+	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

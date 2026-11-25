@@ -534,3 +534,26 @@ func TestStatsTrends(t *testing.T) {
 		t.Errorf("past year: %+v", past.Year)
 	}
 }
+
+// Writes at once (the agent in the background, Undo restoring several) all
+// land: one waits for the other rather than failing.
+func TestConcurrentWrites(t *testing.T) {
+	ctx := context.Background()
+	st, u := newStore(t)
+	L := personal(t, st, u)
+	errs := make(chan error, 20)
+	for i := 0; i < 20; i++ {
+		go func(i int) {
+			_, err := st.CreateEntries(ctx, L, []EntryInput{entry(fmt.Sprintf("Item %d", i), "Shopping", 1, "2026-11-25", "Cash")})
+			errs <- err
+		}(i)
+	}
+	for i := 0; i < 20; i++ {
+		if err := <-errs; err != nil {
+			t.Errorf("write %d: %v", i, err)
+		}
+	}
+	if n, _ := st.CountEntries(ctx, L); n != 20 {
+		t.Errorf("%d entries, want 20", n)
+	}
+}
