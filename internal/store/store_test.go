@@ -787,7 +787,7 @@ func TestUniqueNamesMigration(t *testing.T) {
 	a, _ := st.CreateUser(ctx, "a@example.com", "Sam", "password1", false)
 	b, _ := st.CreateUser(ctx, "b@example.com", "Other", "password1", false)
 	// As before names were unique: two named Sam.
-	for _, q := range []string{`DROP INDEX users_name`, fmt.Sprintf(`UPDATE users SET name = 'SAM' WHERE id = %d`, b.ID), `PRAGMA user_version = 4`} {
+	for _, q := range []string{`DROP INDEX users_name`, `DROP TABLE ledger_report_channels`, `DROP TABLE ledger_reports`, `DROP TABLE channels`, fmt.Sprintf(`UPDATE users SET name = 'SAM' WHERE id = %d`, b.ID), `PRAGMA user_version = 4`} {
 		if _, err := st.db.Exec(q); err != nil {
 			t.Fatal(err)
 		}

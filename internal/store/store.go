@@ -208,6 +208,45 @@ var migrations = []string{
 	`UPDATE users SET name = name || ' (' || id || ')'
 		WHERE name <> '' AND id NOT IN (SELECT MIN(id) FROM users WHERE name <> '' GROUP BY lower(name));
 	CREATE UNIQUE INDEX users_name ON users(name COLLATE NOCASE) WHERE name <> '';`,
+
+	// 6: notifications. A user's channels (a webhook, Slack, …), each with
+	// its address and, sealed, any headers to send (they often hold a token);
+	// and, for each ledger, the reports a member wants of it, when, and the
+	// channels they go to, with the day each last went out.
+	`CREATE TABLE channels (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		kind           TEXT NOT NULL,
+		name           TEXT NOT NULL,
+		url            TEXT NOT NULL,
+		sealed_headers BLOB,
+		last_at        TEXT NOT NULL DEFAULT '',
+		last_error     TEXT NOT NULL DEFAULT '',
+		created_at     TEXT NOT NULL
+	);
+	CREATE INDEX channels_user ON channels(user_id);
+	CREATE TABLE ledger_reports (
+		ledger_id    INTEGER NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		daily        INTEGER NOT NULL DEFAULT 0,
+		weekly       INTEGER NOT NULL DEFAULT 0,
+		monthly      INTEGER NOT NULL DEFAULT 0,
+		time         TEXT NOT NULL DEFAULT '09:00',
+		tz           TEXT NOT NULL DEFAULT '',
+		language     TEXT NOT NULL DEFAULT '',
+		ai           INTEGER NOT NULL DEFAULT 1,
+		daily_sent   TEXT NOT NULL DEFAULT '',
+		weekly_sent  TEXT NOT NULL DEFAULT '',
+		monthly_sent TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (ledger_id, user_id)
+	);
+	CREATE TABLE ledger_report_channels (
+		ledger_id  INTEGER NOT NULL,
+		user_id    INTEGER NOT NULL,
+		channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+		PRIMARY KEY (ledger_id, user_id, channel_id),
+		FOREIGN KEY (ledger_id, user_id) REFERENCES ledger_reports(ledger_id, user_id) ON DELETE CASCADE
+	);`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {
