@@ -26,7 +26,7 @@ Paylist opens on the month at a glance.
 - **By type** and **by card**: two donuts, with the share of each.
 - **Monthly spending** for the last twelve months.
 
-Click a day, a type or a card to list its entries right there, and click an entry to change it.
+Click a day, a type or a card to open its entries in a window, and click an entry to change it.
 
 ## Ledger
 
@@ -78,13 +78,19 @@ claude mcp add --transport http paylist https://pay.example.com/mcp \
 | `get_stats` | A month's total, change from the same days of the month before, daily totals, totals by type and by card, and the months before it |
 | `list_months` | Every month with entries, with its total and count |
 
-Everything you can do with your ledger in Paylist, an agent can do through these tools. Account settings, members, model keys and tokens stay in the app.
+Everything you can do with a ledger's entries, types and cards in Paylist, an agent can do through these tools. Making, sharing and deleting ledgers, account settings, model keys and tokens stay in the app.
 
-A token reaches only its owner's ledger, and can be revoked at any time.
+A token reaches only its owner's ledgers, those shared with them included, with the same role they have in the app, and can be revoked at any time.
 
 ## Ledgers, shared
 
-Everyone starts with a personal ledger and can make more, such as one for the household or a trip, each with its own types, cards and currency; the sidebar lists them and switches between them. A ledger's owner can share it, in **Settings → This ledger**, with other people on the server: an **editor** changes it as the owner does, a **viewer** only reads it. The agent and MCP work on the ledger that's open, or one named by its name.
+Everyone starts with a personal ledger and can make more, such as one for the household or a trip, each with its own entries, types, cards and currency.
+
+- **Switch** from the ledger's name at the top of the sidebar; the same menu makes a new ledger and opens the open one's **Ledger settings**.
+- **Ledger settings** hold its name and currency, the people who have it, and its types and cards, and end with deleting it (or leaving one shared with you).
+- **Share** a ledger by the email of someone's Paylist account on the same server, as an **editor**, who changes it as the owner does, or a **viewer**, who only reads it. Only the owner renames it, changes its currency, shares it or deletes it.
+
+The agent works on the ledger that's open; over MCP, on the ledger last open in Paylist, or one named by its name.
 
 One server holds everyone, each with their own ledgers, model and key. The first person to open a new server becomes its admin and adds the others in **Settings → Accounts**.
 
