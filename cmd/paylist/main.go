@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"text/tabwriter"
 	"time"
+	_ "time/tzdata" // report time zones, on systems without a zone database
 
 	"golang.org/x/term"
 
@@ -133,19 +134,21 @@ func serve(args []string) error {
 		logger.Warn("demo model enabled (PAYLIST_DEV_FAKE=1); for development only")
 	}
 
+	app := server.New(server.Options{
+		Store: st, Static: static, AllowFake: allowFake, Logger: logger,
+		SecureCookies: os.Getenv("PAYLIST_SECURE_COOKIES") == "1",
+		PublicURL:     os.Getenv("PAYLIST_PUBLIC_URL"),
+	})
 	srv := &http.Server{
-		Addr: *addr,
-		Handler: server.New(server.Options{
-			Store: st, Static: static, AllowFake: allowFake, Logger: logger,
-			SecureCookies: os.Getenv("PAYLIST_SECURE_COOKIES") == "1",
-			PublicURL:     os.Getenv("PAYLIST_PUBLIC_URL"),
-		}).Handler(),
+		Addr:              *addr,
+		Handler:           app.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go purgeExpired(ctx, st, logger)
+	go app.RunReports(ctx)
 	errc := make(chan error, 1)
 	go func() {
 		logger.Info("Paylist listening", "url", "http://"+*addr, "data", *dataDir)

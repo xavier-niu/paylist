@@ -300,7 +300,7 @@ func TestMCP(t *testing.T) {
 	}
 	defer s.Close()
 	tools, err := s.ListTools(t.Context(), nil)
-	if err != nil || len(tools.Tools) != 16 {
+	if err != nil || len(tools.Tools) != 18 {
 		t.Fatalf("tools: %v %v", tools, err)
 	}
 

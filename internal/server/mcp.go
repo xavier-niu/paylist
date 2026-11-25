@@ -29,7 +29,7 @@ import (
 
 const mcpInstructions = `Paylist is the user's personal spending ledger. Each entry has a name, a type, an amount, a date (YYYY-MM-DD) and the card it was paid with; type and card are choices from lists of options. The ledger is kept month by month. The user may have several ledgers, their own and others shared with them (list_ledgers); every tool takes one by name or id, and without one uses the ledger last open in Paylist. A viewer can only read a ledger. get_profile gives a ledger's currency and today's date.
 
-Read it with list_entries (one month, a date range, a type, a card or a name), get_stats (a month's totals by day, by type and by card, against the usual and the year before, and the months before), list_months (every month with entries) and get_history (who created or changed an entry, and what). Change it with add_entries (several at once), update_entry and delete_entries. list_options shows the types and cards, with when each was last used; manage_option creates, renames, recolors, deletes or reorders them. manage_ledger makes a ledger, or renames, re-currencies, deletes or leaves one; ledger_people shows who has one, and its owner shares it.
+Read it with list_entries (one month, a date range, a type, a card or a name), get_stats (a month's totals by day, by type and by card, against the usual and the year before, and the months before), list_months (every month with entries) and get_history (who created or changed an entry, and what). Change it with add_entries (several at once), update_entry and delete_entries. list_options shows the types and cards, with when each was last used; manage_option creates, renames, recolors, deletes or reorders them. manage_ledger makes a ledger, or renames, re-currencies, deletes or leaves one; ledger_people shows who has one, and its owner shares it. channels sets up where the user is sent messages (webhooks, Slack, …); ledger_reports sets which of a ledger's reports (daily, weekly, monthly: a brief note on spending against the usual) they get on them, and when, and previews or sends one.
 
 Amounts are in the ledger's currency. For one paid in another, give add_entries, update_entry or refund its currency: it's converted at that day's rate (get_exchange_rate shows rates) and what was paid is kept beside it. When adding entries, reuse an existing type and card whose name fits before making new ones; when the user names something without its amount, type or card, suggest_entries shows how it was entered before. For a refund, use refund: it deletes the purchase it undoes, takes part off one picked by id, or records the refund as a negative amount when none matches. Delete only what the user asked to delete.`
 
@@ -191,6 +191,41 @@ type mcpStatsIn struct {
 	Ledger string `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
 	Month  string `json:"month,omitempty" jsonschema:"the month, YYYY-MM; the current month when left out"`
 	Months int    `json:"months,omitempty" jsonschema:"how many months of monthly totals to include, up to this one (1 to 36, default 12)"`
+}
+
+type mcpChannelsIn struct {
+	Action   string          `json:"action,omitempty" jsonschema:"list (the default), add, update, remove or test"`
+	ID       int64           `json:"id,omitempty" jsonschema:"update, remove or test: the channel's id, from list"`
+	Kind     string          `json:"kind,omitempty" jsonschema:"add: webhook (sent Paylist's JSON), slack, discord, feishu, dingtalk, wecom, bark or ntfy"`
+	Name     string          `json:"name,omitempty" jsonschema:"add or update: what to call it; its address's host when left out"`
+	URL      string          `json:"url,omitempty" jsonschema:"add or update: the address messages are POSTed to (the service's incoming webhook, a Bark key's address, an ntfy topic's)"`
+	Headers  *[]store.Header `json:"headers,omitempty" jsonschema:"add or update, webhook and ntfy only: headers to send, such as Authorization; on update, the whole list, where a header without a value keeps the one it had"`
+	Language string          `json:"language,omitempty" jsonschema:"test: en or zh"`
+}
+
+type mcpChannelsOut struct {
+	Channels []store.Channel `json:"channels" jsonschema:"the user's channels, with the names of the headers each sends (never their values), when it was last sent on and why that failed, if it did"`
+}
+
+type mcpReportsIn struct {
+	Ledger   string   `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
+	Action   string   `json:"action,omitempty" jsonschema:"get (the default), set, preview or send"`
+	Daily    *bool    `json:"daily,omitempty" jsonschema:"set: send the daily report (the day before), or stop it; unchanged when left out"`
+	Weekly   *bool    `json:"weekly,omitempty" jsonschema:"set: send the weekly report (the week before, Monday to Sunday) on Mondays, or stop it"`
+	Monthly  *bool    `json:"monthly,omitempty" jsonschema:"set: send the monthly report (the month before) on the 1st, or stop it"`
+	Time     string   `json:"time,omitempty" jsonschema:"set: the time of day to send them, HH:MM"`
+	Timezone string   `json:"timezone,omitempty" jsonschema:"set: the time zone time is in, an IANA name such as Asia/Shanghai; unchanged when left out"`
+	Language string   `json:"language,omitempty" jsonschema:"set: the language they're written in, en or zh; preview or send: this time only"`
+	AI       *bool    `json:"ai,omitempty" jsonschema:"set: whether the user's AI model adds a suggestion to each report; turning it on needs a model chosen in Paylist's Settings (ai_ready)"`
+	Channels *[]int64 `json:"channels,omitempty" jsonschema:"set: the ids of the user's channels to send them to (the channels tool lists them); unchanged when left out"`
+	Period   string   `json:"period,omitempty" jsonschema:"preview or send: daily (the default), weekly or monthly"`
+}
+
+type mcpReportsOut struct {
+	Ledger  string          `json:"ledger"`
+	Reports store.Reports   `json:"reports" jsonschema:"which reports the user gets of the ledger, at what time (HH:MM) in which time zone (empty: the server's), in which language (empty: the account's), with a suggestion by their AI model or not (only when ai_ready: they have one), on which channels"`
+	Report  *report         `json:"report,omitempty" jsonschema:"preview or send: the report: its title, its text (the note, and the AI suggestion when there is one) and its figures"`
+	Sent    []store.Channel `json:"sent_to,omitempty" jsonschema:"send: the channels it went to, each saying why if it failed"`
 }
 
 // newMCPServer builds the MCP server whose tools work on the ledger of the user
@@ -692,6 +727,105 @@ func (s *Server) newMCPServer(caller mcpCallerFunc, via string) *mcp.Server {
 		}
 		ms, err := st.ListLedgerMembers(ctx, l.ID)
 		return nil, mcpPeopleOut{Ledger: l.Name, People: ms}, err
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "channels",
+		Description: "The user's channels: where Paylist sends them messages, such as their ledgers' reports. A channel is a webhook (sent Paylist's JSON, " +
+			"with headers of the user's own, such as Authorization) or a service's incoming webhook: Slack, Discord, Feishu, DingTalk, WeCom, Bark or ntfy. " +
+			"list shows them; add, update and remove change them; test sends one a short message.",
+		Annotations: &mcp.ToolAnnotations{Title: "Channels", DestructiveHint: &yes, OpenWorldHint: &yes},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpChannelsIn) (*mcp.CallToolResult, mcpChannelsOut, error) {
+		u, _, err := caller(req)
+		if err != nil {
+			return nil, mcpChannelsOut{}, err
+		}
+		opt := func(v string) *string {
+			if v == "" {
+				return nil
+			}
+			return &v
+		}
+		switch in.Action {
+		case "", "list":
+		case "add":
+			_, err = st.AddChannel(ctx, u.ID, store.ChannelInput{Kind: &in.Kind, Name: &in.Name, URL: &in.URL, Headers: in.Headers})
+		case "update":
+			_, err = st.UpdateChannel(ctx, u.ID, in.ID, store.ChannelInput{Kind: opt(in.Kind), Name: opt(in.Name), URL: opt(in.URL), Headers: in.Headers})
+		case "remove":
+			err = st.DeleteChannel(ctx, u.ID, in.ID)
+		case "test":
+			_, err = s.testChannel(ctx, u, in.ID, in.Language)
+		default:
+			err = fmt.Errorf("action is %q: use list, add, update, remove or test", in.Action)
+		}
+		if errors.Is(err, store.ErrNotFound) {
+			err = fmt.Errorf("there is no channel %d; list shows them", in.ID)
+		}
+		if err != nil {
+			return nil, mcpChannelsOut{}, errors.New(sentence(err))
+		}
+		chs, err := st.ListChannels(ctx, u.ID)
+		return nil, mcpChannelsOut{Channels: chs}, err
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "ledger_reports",
+		Description: "The reports the user gets of a ledger, on channels of theirs (the channels tool): daily (the day before), weekly (the week before, " +
+			"sent on Mondays) and monthly (the month before, sent on the 1st), at the time of day set. A report is a brief note on how the period compares " +
+			"with the usual and which types rose or fell most; with ai on, the user's AI model adds a short suggestion of what to do about it. " +
+			"get shows the settings; set changes them; preview shows a report as it would be sent today; send sends it now.",
+		Annotations: &mcp.ToolAnnotations{Title: "A ledger's reports", DestructiveHint: &no, OpenWorldHint: &yes},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpReportsIn) (*mcp.CallToolResult, mcpReportsOut, error) {
+		ctx, l, err := ledger(ctx, req, in.Ledger, false)
+		if err != nil {
+			return nil, mcpReportsOut{}, err
+		}
+		u, _, _ := caller(req)
+		out := mcpReportsOut{Ledger: l.Name}
+		switch in.Action {
+		case "", "get":
+		case "set":
+			var r store.Reports
+			if r, err = st.GetReports(ctx, l.ID, u.ID); err != nil {
+				return nil, out, err
+			}
+			for _, set := range []struct{ to, val *bool }{{&r.Daily, in.Daily}, {&r.Weekly, in.Weekly}, {&r.Monthly, in.Monthly}} {
+				if set.val != nil {
+					*set.to = *set.val
+				}
+			}
+			if in.Time != "" {
+				r.Time = in.Time
+			}
+			if in.Timezone != "" {
+				r.TZ = in.Timezone
+			}
+			if in.Language != "" {
+				r.Language = in.Language
+			}
+			if in.Channels != nil {
+				r.Channels = *in.Channels
+			}
+			if in.AI != nil {
+				r.AI = *in.AI
+			}
+			_, err = s.saveReports(ctx, l.ID, u.ID, r, time.Now())
+		case "preview":
+			out.Report, _, err = s.ledgerReport(ctx, u, l, in.Period, "", in.Language, time.Now())
+		case "send":
+			var sent *reportSent
+			if sent, err = s.sendReportNow(ctx, u, l, in.Period, "", in.Language); err == nil {
+				out.Report, out.Sent = sent.Report, sent.Channels
+			}
+		default:
+			err = fmt.Errorf("action is %q: use get, set, preview or send", in.Action)
+		}
+		if err != nil {
+			return nil, out, errors.New(sentence(err))
+		}
+		out.Reports, err = s.getReports(ctx, l.ID, u.ID)
+		return nil, out, err
 	})
 	return srv
 }

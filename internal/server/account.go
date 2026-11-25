@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"regexp"
@@ -118,8 +119,12 @@ func (s *Server) handleSaveModel(w http.ResponseWriter, r *http.Request) {
 
 // llmClient builds a client from the signed-in user's saved provider and key.
 func (s *Server) llmClient(r *http.Request) (llm.Client, llm.Config, error) {
-	u := currentUser(r.Context())
-	_, conf, key, err := s.opts.Store.ActiveProvider(r.Context(), u.ID)
+	return s.llmClientFor(r.Context(), currentUser(r.Context()).ID)
+}
+
+// llmClientFor is the model a user has chosen, with their key.
+func (s *Server) llmClientFor(ctx context.Context, userID int64) (llm.Client, llm.Config, error) {
+	_, conf, key, err := s.opts.Store.ActiveProvider(ctx, userID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, llm.Config{}, &llm.Error{Msg: "Choose an AI model and add your API key in Settings first.", Status: http.StatusBadRequest}
 	}

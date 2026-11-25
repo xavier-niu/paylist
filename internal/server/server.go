@@ -78,6 +78,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me/tokens", s.requireUser(s.handleListTokens))
 	mux.HandleFunc("POST /api/me/tokens", s.requireUser(s.handleCreateToken))
 	mux.HandleFunc("DELETE /api/me/tokens/{id}", s.requireUser(s.handleDeleteToken))
+	mux.HandleFunc("GET /api/channels", s.requireUser(s.handleListChannels))
+	mux.HandleFunc("POST /api/channels", s.requireUser(s.handleAddChannel))
+	mux.HandleFunc("PUT /api/channels/{id}", s.requireUser(s.handleUpdateChannel))
+	mux.HandleFunc("DELETE /api/channels/{id}", s.requireUser(s.handleDeleteChannel))
+	mux.HandleFunc("POST /api/channels/{id}/test", s.requireUser(s.handleTestChannel))
 	mux.HandleFunc("GET /api/admin/users", s.requireAdmin(s.handleListUsers))
 	mux.HandleFunc("POST /api/admin/users", s.requireAdmin(s.handleCreateUser))
 	mux.HandleFunc("PUT /api/admin/users/{id}/password", s.requireAdmin(s.handleResetPassword))
@@ -112,6 +117,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/months", s.withLedger(false, s.handleMonths))
 	mux.HandleFunc("GET /api/refund/matches", s.withLedger(false, s.handleRefundMatches))
 	mux.HandleFunc("POST /api/refund", s.withLedger(true, s.handleRefund))
+	// A member's reports of the ledger; a viewer may have them too.
+	mux.HandleFunc("GET /api/reports", s.withLedger(false, s.handleGetReports))
+	mux.HandleFunc("PUT /api/reports", s.withLedger(false, s.handleSaveReports))
+	mux.HandleFunc("POST /api/reports/send", s.withLedger(false, s.handleSendReport))
 
 	// The agent page: conversations, and a turn run with the user's own key
 	mux.HandleFunc("GET /api/chats", s.requireUser(s.handleListChats))
