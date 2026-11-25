@@ -59,6 +59,77 @@ type reportLedger struct {
 	Lower  []typeChange `json:"lower"`
 	// Daily and weekly: how the month the report is sent in is going.
 	Month *monthPace `json:"month,omitempty"`
+	// Monthly: the year up to the month, against last year's same months.
+	Year *yearView `json:"year,omitempty"`
+}
+
+// yearView is a year from January up to a month, against the same months
+// of the year before.
+type yearView struct {
+	Year     int     `json:"year"`
+	Through  string  `json:"through"` // YYYY-MM, the month it runs to
+	SoFar    float64 `json:"so_far"`
+	LastYear float64 `json:"last_year"` // the same months of the year before
+	// Average is a month's average, over the months from the first with
+	// spending this year (Months of them).
+	Average float64 `json:"average"`
+	Months  int     `json:"months"`
+	// Rank is where the month stands among them by spending, 1 the most.
+	Rank int `json:"rank"`
+	// The types well above and below last year's same months, furthest first.
+	Higher []typeChange `json:"higher"`
+	Lower  []typeChange `json:"lower"`
+}
+
+// yearView is the year month is in, up to it, against last year's same months.
+func (s *Server) yearView(ctx context.Context, ledgerID int64, month time.Time) (*yearView, error) {
+	st := s.opts.Store
+	start, end := time.Date(month.Year(), 1, 1, 0, 0, 0, 0, time.UTC), month.AddDate(0, 1, -1)
+	cur, err := st.Summarize(ctx, ledgerID, day(start), day(end), false)
+	if err != nil {
+		return nil, err
+	}
+	prev, err := st.Summarize(ctx, ledgerID, day(start.AddDate(-1, 0, 0)), day(end.AddDate(-1, 0, 0)), false)
+	if err != nil {
+		return nil, err
+	}
+	all, err := st.AllMonths(ctx, ledgerID, month.Format("2006-01"))
+	if err != nil {
+		return nil, err
+	}
+	v := &yearView{Year: month.Year(), Through: month.Format("2006-01"), SoFar: cur.Total, LastYear: prev.Total}
+	// This year's months, from the first with spending, and where this one ranks.
+	var totals []float64
+	var this float64
+	first := 0
+	for _, m := range all {
+		t, err := store.ParseMonth(m.Month)
+		if err != nil || t.Year() != month.Year() {
+			continue
+		}
+		if first == 0 || int(t.Month()) < first {
+			first = int(t.Month())
+		}
+		totals = append(totals, m.Total)
+		if m.Month == v.Through {
+			this = m.Total
+		}
+	}
+	if first == 0 {
+		return v, nil
+	}
+	v.Months = int(month.Month()) - first + 1
+	v.Average = math.Round(cur.Total/float64(v.Months)*100) / 100
+	v.Rank = 1
+	for _, t := range totals {
+		if t > this {
+			v.Rank++
+		}
+	}
+	if prev.Total > 0 {
+		v.Higher, v.Lower = movers(cur.ByType, prev.ByType, prev.Total)
+	}
+	return v, nil
 }
 
 // monthPace is how a month is going, up to the day before today: what it has
@@ -153,6 +224,8 @@ func (s *Server) buildReport(ctx context.Context, u *store.User, l *store.Ledger
 		if figures.Month, err = s.monthPace(ctx, l.ID, today); err != nil {
 			return nil, err
 		}
+	} else if figures.Year, err = s.yearView(ctx, l.ID, from); err != nil {
+		return nil, err
 	}
 	rep := &report{Period: period, Ledger: l.Name, From: day(from), To: day(to), Figures: figures}
 	rep.Title = reportTitle(l.Name, lang)
@@ -339,6 +412,17 @@ func verdict(lang string, v, usual float64) string {
 	return tr(lang, "about usual", "和往常差不多")
 }
 
+// arrow points the way v is from base: ↑, ↓, or ≈ when it's close.
+func arrow(v, base float64) string {
+	switch r := v / base; {
+	case r >= 1.15:
+		return "↑"
+	case r <= 0.85:
+		return "↓"
+	}
+	return "≈"
+}
+
 // writeReport is Paylist's own note, laid out for a chat app: sections
 // apart, each its name and then its lines, indented:
 //
@@ -379,13 +463,7 @@ func writeReport(rep *report, lang string) string {
 	total := func(v float64) string { return "  " + tr(lang, "Total ", "合计 ") + m(v) }
 	// against says how v compares with usual, as "↓ lower than usual (¥2,034.89 a week)".
 	against := func(v, usual float64, per, by string) string {
-		arrow := "≈"
-		if r := v / usual; r >= 1.15 {
-			arrow = "↑"
-		} else if r <= 0.85 {
-			arrow = "↓"
-		}
-		return "  " + arrow + " " + verdict(lang, v, usual) + tr(lang, " ("+m(usual)+per+by+")", "（"+by+per+m(usual)+"）")
+		return "  " + arrow(v, usual) + " " + verdict(lang, v, usual) + tr(lang, " ("+m(usual)+per+by+")", "（"+by+per+m(usual)+"）")
 	}
 
 	period := []string{total(l.Total)}
@@ -424,6 +502,7 @@ func writeReport(rep *report, lang string) string {
 	if len(types) > 0 {
 		sections = append(sections, section(byType, types...))
 	}
+
 	return strings.Join(sections, "\n\n")
 }
 
@@ -486,16 +565,19 @@ list_entries with last week's dates, and a type, shows the entries behind a chan
 
 A monthly report, sent on the 1st: what was spent last month, overall and by type, against a usual month (the average of up to 6 months before).
 
+"this_year" sets the month in its year: what the year has spent from January up to last month, against last year's same months (last_year_same_months, when there were any); its average month, over the months since the first with spending (months_with_spending); where last month ranks among them by spending (last_month_rank, 1 the most); and the types well above or below last year's same months.
+
 # What to write
 
 One paragraph, about 100 to 200 words (a guide, not a limit). A month is long enough to show habits:
 
 1. What was unusual last month, and why: the types that moved most in money, and what is behind each (one large purchase, a run of small ones, something new, a regular cost that grew, or something that usually happens and didn't). Say whether each is a one-off or part of a trend over the months before.
-2. A short plan for this month, one to three concrete steps that would keep its spending at or below a usual month: tied to what you found, such as a type to hold to about its usual amount, a regular cost to look at again, or a purchase to put off. If last month was below usual, say what made it so and how to keep it.
+2. Where the year stands, in a sentence or two: whether it is running above or below last year, and the types behind that; whether last month was one of its heaviest or lightest; and whether last month's change carries on a trend through the year. Leave it out when the year has only begun.
+3. A short plan for this month, one to three concrete steps that would keep its spending at or below a usual month, and the year on course: tied to what you found, such as a type to hold to about its usual amount, a regular cost to look at again, or a purchase to put off. If last month was below usual, say what made it so and how to keep it.
 
 # How to find out
 
-get_stats for last month shows each type month by month (type_monthly), to tell a trend from a one-off; list_entries with a type and last month's dates shows the entries behind a change. Three or four calls are usually enough; then write.`,
+get_stats for last month shows each type month by month (type_monthly), to tell a trend from a one-off, and the year month by month against the last (year); list_entries with a type and last month's dates shows the entries behind a change. Three or four calls are usually enough; then write.`,
 }
 
 // suggestPrompt is the model's instructions for a kind of report, in lang.
@@ -582,6 +664,23 @@ func reportFacts(rep *report) map[string]any {
 		spent = append(spent, map[string]string{"type": n, "spent": m(g.Total)})
 	}
 	f["spent_by_type"] = spent
+	if y := l.Year; y != nil && y.Months > 0 {
+		through, _ := store.ParseMonth(y.Through)
+		year := map[string]any{
+			"year":                        y.Year,
+			"months":                      "January to " + through.Format("January"),
+			"spent_so_far":                m(y.SoFar),
+			"average_month":               m(y.Average),
+			"months_with_spending":        y.Months,
+			"last_month_rank":             y.Rank,
+			"types_higher_than_last_year": changes(y.Higher),
+			"types_lower_than_last_year":  changes(y.Lower),
+		}
+		if y.LastYear > 0 {
+			year["last_year_same_months"] = m(y.LastYear)
+		}
+		f["this_year"] = year
+	}
 	if p := l.Month; p != nil {
 		f["this_month"] = map[string]any{
 			"month":                     p.Month,

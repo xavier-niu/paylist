@@ -127,6 +127,17 @@ func TestReports(t *testing.T) {
 	if monthly.Figures.Month != nil {
 		t.Errorf("a monthly report has the month it's sent in: %+v", monthly.Figures.Month)
 	}
+	// And the year up to the month: September and October, ¥3,200 a month,
+	// October the heavier; nothing the year before to compare with.
+	if y := monthly.Figures.Year; y == nil || y.SoFar != 6400 || y.LastYear != 0 || y.Months != 2 || y.Average != 3200 || y.Rank != 1 || y.Through != "2026-10" {
+		t.Errorf("the year: %+v", y)
+	}
+	if strings.Contains(monthly.Text, "year") {
+		t.Errorf("the year is for the AI, not the note: %q", monthly.Text)
+	}
+	if weekly.Figures.Year != nil {
+		t.Errorf("a weekly report has the year: %+v", weekly.Figures.Year)
+	}
 	want = "October 2026\n  Total ¥3,400.00\n  ≈ about usual (¥3,000.00 a month)\n\nBy type\n    ↑ Food (new)"
 	if monthly.From != "2026-10-01" || monthly.Text != want {
 		t.Errorf("monthly:\n%s\nwant\n%s", monthly.Text, want)
@@ -240,6 +251,41 @@ func TestReportByModel(t *testing.T) {
 	}
 }
 
+// A monthly report's year, against last year's same months: the total, and
+// the types that grew or shrank, for the AI's suggestion.
+func TestYearView(t *testing.T) {
+	e := newEnv(t)
+	s := New(Options{Store: e.st})
+	u, _ := e.st.CreateUser(t.Context(), "y@example.com", "", testPassword, false)
+	ls, _ := e.st.ListLedgers(t.Context(), u.ID)
+	addSpending(t, e.st, ls[0].ID)
+	var last []store.EntryInput
+	for _, d := range []string{"2025-09-01", "2025-10-01"} {
+		amount := 2000.0
+		last = append(last, store.EntryInput{Name: str("Rent"), Type: str("Home"), Date: str(d), Amount: &amount})
+	}
+	food := 900.0
+	last = append(last, store.EntryInput{Name: str("Dinners"), Type: str("Food"), Date: str("2025-10-20"), Amount: &food})
+	if _, err := e.st.CreateEntries(t.Context(), ls[0].ID, last); err != nil {
+		t.Fatal(err)
+	}
+	y, err := s.yearView(t.Context(), ls[0].ID, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil || y.SoFar != 6400 || y.LastYear != 4900 {
+		t.Fatalf("the year: %v %+v", err, y)
+	}
+	// Home ¥6,000 against ¥4,000 is up; Food ¥400 against ¥900 is down.
+	if len(y.Higher) != 1 || y.Higher[0].Name != "Home" || len(y.Lower) != 1 || y.Lower[0].Name != "Food" {
+		t.Errorf("the types against last year: %+v %+v", y.Higher, y.Lower)
+	}
+	f := reportFacts(&report{Period: store.ReportMonthly, Figures: &reportLedger{Currency: "CNY", Year: y}})
+	b, _ := json.Marshal(f)
+	for _, want := range []string{`"last_year_same_months":"¥4,900.00"`, `"months":"January to October"`, `"types_higher_than_last_year":[{"spent":"¥6,000.00","type":"Home","usually":"¥4,000.00"}]`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("the facts lack %s: %s", want, b)
+		}
+	}
+}
+
 // The link at the end of a report goes to where people open the app: the
 // address it was last opened at, or PAYLIST_PUBLIC_URL when that's set.
 func TestLinkBase(t *testing.T) {
@@ -272,6 +318,10 @@ func TestSuggestPrompts(t *testing.T) {
 			if !strings.Contains(p, part) {
 				t.Errorf("%s: no %q", period, part)
 			}
+		}
+		// A month is set in its year.
+		if year := strings.Contains(suggestPrompt(period, "en"), "this_year"); year != (period == store.ReportMonthly) {
+			t.Errorf("%s: about the year: %v", period, year)
 		}
 		// The days and weeks look at where the month is heading; a month is done.
 		if pace := strings.Contains(suggestPrompt(period, "en"), "this_month"); pace == (period == store.ReportMonthly) {
