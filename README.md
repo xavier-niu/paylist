@@ -74,19 +74,23 @@ claude mcp add --transport http paylist https://pay.example.com/mcp \
 | Tool | Does |
 |---|---|
 | `list_ledgers` | The user's ledgers, their own and those shared with them, with their role in each. Every other tool takes an optional `ledger` (a name or an id); without it, the ledger last open in Paylist |
-| `get_profile` | A ledger's name and currency, the user's role in it and their language, and today's date |
-| `list_entries` | Entries of a month or a date range, optionally of one type or card, or with names containing some text; with their count and total |
-| `add_entries` | Add entries, all or none. The date defaults to today; a new type or card becomes an option |
-| `update_entry` | Change the fields given |
+| `manage_ledger` | Make a ledger; as its owner, rename it, change its currency or delete it; or leave one shared with you |
+| `ledger_people` | Who has a ledger, and their roles; its owner invites people by their account's email, changes roles and removes them |
+| `get_profile` | A ledger's name and currency, the user's name, role and language, and today's date |
+| `list_entries` | Entries of a month or a date range, optionally of one type or card, or with names containing some text; with their count and total, and what was paid in another currency |
+| `add_entries` | Add entries, all or none. The date defaults to today; a new type or card becomes an option; with a `currency`, the amount is converted at that day's rate and what was paid kept |
+| `update_entry` | Change the fields given, the amount in a `currency` too |
 | `delete_entries` | Delete entries by id |
-| `refund` | Record a refund the way the ledger's Refund form does: a purchase from the last 120 days with the same name and amount is deleted; with several, they come back to pick from; with none, the refund is added as a negative amount under the type, card and date given |
+| `refund` | Record a refund the way the ledger's Refund form does: a purchase from the last 120 days with the same name and amount is deleted; with several, they come back to pick from; with none, the refund is added as a negative amount under the type, card and date given. Given a purchase's id and less than it cost, takes that part off it; `new` adds it as its own; a `currency` converts it |
+| `get_history` | An entry's history: who created and changed it, through what, and every change from what to what |
 | `suggest_entries` | Names used before that contain some text, with how each was last entered (type, card, amount), to fill in what the user leaves out |
-| `list_options` | The types and cards, with their colors and how many entries use each |
-| `manage_option` | Create, rename, recolor or delete a type or card; renaming carries through to every entry |
-| `get_stats` | A month's total, change from the same days of the month before, daily totals, totals by type and by card, and the months before it |
+| `list_options` | The types and cards, in their order, with their colors, how many entries use each and when one last did |
+| `manage_option` | Create, rename, recolor, delete or reorder the types or cards; renaming carries through to every entry |
+| `get_stats` | A month's total, change from the same days of the month before and from the usual, daily totals, totals by type and by card, each type month by month, and the year against the last |
 | `list_months` | Every month with entries, with its total and count |
+| `get_exchange_rate` | What one currency is worth in another on a day |
 
-Everything you can do with a ledger's entries, types and cards in Paylist, an agent can do through these tools. Making, sharing and deleting ledgers, account settings, model keys and tokens stay in the app.
+Everything you can do with your ledgers in Paylist, an agent can do through these tools. Account settings, passwords, model keys, tokens and the server's accounts stay in the app.
 
 A token reaches only its owner's ledgers, those shared with them included, with the same role they have in the app, and can be revoked at any time.
 
