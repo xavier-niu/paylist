@@ -59,7 +59,8 @@ Chat with an assistant that works on your ledger:
 
 - **Bring your own key**: Anthropic (Claude), OpenAI, DeepSeek, OpenRouter, Qwen, Moonshot, Ollama, or any other OpenAI-compatible API with tool calling. Keys are stored encrypted on your server and never sent back to the browser.
 - The agent uses the same MCP tools as outside agents, and you see every call it makes, with what went in and what came back.
-- Conversations are saved, so you can pick one up later.
+- It works in the background: leave the page, or close it, and the turn goes on; the sidebar shows the agent at work, and a note says when it has replied. A turn that makes no progress for five minutes is closed.
+- Conversations are saved as they go, so you can pick one up later.
 
 ## MCP
 
