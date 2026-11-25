@@ -85,11 +85,32 @@ export interface Entry {
   card: string
   created_at: string
   updated_at: string
+  /** Paid in another currency: how much there, and which (amount is the ledger's). */
+  orig_amount?: number
+  orig_currency?: string
+}
+
+/** A step in an entry's history: created, changed, or part refunded; changes holds each field's before and after. */
+export interface EntryEvent {
+  id: number
+  action: "created" | "changed" | "refunded"
+  changes?: Record<string, [unknown, unknown]>
+  user_id?: number
+  /** Their name or email; "" when unknown. */
+  by: string
+  /** Their name (names are unique), and email. */
+  by_name?: string
+  by_email?: string
+  /** "" for the app, or "agent", "mcp". */
+  via?: string
+  at: string
 }
 
 /** What a refund did: deleted a purchase, added a negative amount, or found several to pick from. */
 export interface RefundResult {
   refunded?: Entry
+  /** Part refunded: the purchase as it now is. */
+  reduced?: Entry
   added?: Entry
   matches?: Entry[]
 }
@@ -104,7 +125,8 @@ export interface Suggestion {
   uses: number
 }
 
-export type EntryInput = Partial<Pick<Entry, "name" | "type" | "amount" | "date" | "card">>
+/** An entry's fields to set; an empty orig_currency clears what was paid elsewhere. */
+export type EntryInput = Partial<Pick<Entry, "name" | "type" | "amount" | "date" | "card" | "orig_amount" | "orig_currency">>
 
 export interface Option {
   id: number
@@ -292,11 +314,13 @@ export const api = {
   refundMatches: (name: string, amount: number | null) =>
     request<Entry[]>("GET", "/api/refund/matches" + q({ name, amount: amount ?? undefined, today: today() })),
   /** Applies a refund: a picked purchase by id, or its name and amount (with what to record it under if nothing matches). */
-  refund: (body: { id?: number; name?: string; amount?: number; type?: string; card?: string; date?: string }) => request<RefundResult>("POST", "/api/refund", { ...body, today: today() }),
+  refund: (body: { id?: number; name?: string; amount?: number; type?: string; card?: string; date?: string; orig_amount?: number; orig_currency?: string; new?: boolean }) => request<RefundResult>("POST", "/api/refund", { ...body, today: today() }),
   /** Names used before that hold the text, one per name with how it was last entered. */
   suggest: (text: string, limit?: number) => request<Suggestion[]>("GET", "/api/entries/suggest" + q({ q: text, limit })),
   createEntry: (e: EntryInput) => request<Entry>("POST", "/api/entries", e),
   updateEntry: (id: number, e: EntryInput) => request<Entry>("PUT", `/api/entries/${id}`, e),
+  /** An entry's history, oldest first. */
+  entryHistory: (id: number) => request<EntryEvent[]>("GET", `/api/entries/${id}/history`),
   deleteEntries: (ids: number[]) => request<{ deleted: number }>("POST", "/api/entries/delete", { ids }),
   exportURL: (month: string) => "/api/export.csv" + q({ month, ledger: currentLedger || undefined }),
 

@@ -2,6 +2,7 @@ import { Tag } from "@/components/option-select"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Loading, Skeleton } from "@/components/ui/skeleton"
 import { dateLabel, money, type Entry } from "@/lib/api"
+import { Original } from "@/lib/money"
 import { t, tn } from "@/lib/i18n"
 import { optionColor, useApp } from "@/lib/state"
 import { cn } from "@/lib/utils"
@@ -74,7 +75,10 @@ export function EntryList({
                   </span>
                   {show.type && <span className="w-32 shrink-0">{e.type && <Tag name={e.type} color={optionColor(options, "type", e.type)} className="!shadow-none !bg-transparent !px-0 text-[13px] text-ink-2" />}</span>}
                   {show.card && <span className="w-32 shrink-0 max-sm:hidden">{e.card && <Tag name={e.card} color={optionColor(options, "card", e.card)} className="!shadow-none !bg-transparent !px-0 text-[13px] text-ink-2" />}</span>}
-                  <span className={cn("w-28 shrink-0 text-right tabular-nums", e.amount < 0 && "text-good")}>{money(e.amount, currency)}</span>
+                  <span className="flex shrink-0 items-baseline justify-end gap-2">
+                    <Original entry={e} />
+                    <span className={cn("w-28 text-right tabular-nums", e.amount < 0 && "text-good")}>{money(e.amount, currency)}</span>
+                  </span>
                 </button>
               </li>
             ))}

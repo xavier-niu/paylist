@@ -1,4 +1,5 @@
-import { money } from "@/lib/api"
+import { money, type Entry } from "@/lib/api"
+import { t } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 /** An amount with its decimals set small, the way a big figure reads best: ¥8,070.30 */
@@ -25,6 +26,16 @@ export function Delta({ now, before, currency, title }: { now: number; before: n
   return (
     <span className={cn("delta", up ? "up" : "down")} title={title}>
       {up ? "↑" : "↓"} {money(Math.abs(diff), currency)} ({pct.toFixed(1)}%)
+    </span>
+  )
+}
+
+/** What an entry paid in another currency was, small and muted beside its amount: US$12.50. */
+export function Original({ entry, className }: { entry: Pick<Entry, "orig_amount" | "orig_currency">; className?: string }) {
+  if (!entry.orig_currency || entry.orig_amount == null) return null
+  return (
+    <span className={cn("shrink-0 text-[12px] font-normal text-muted-foreground tabular-nums", className)} title={t("Paid in {currency}", { currency: entry.orig_currency })}>
+      {money(entry.orig_amount, entry.orig_currency)}
     </span>
   )
 }

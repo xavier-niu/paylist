@@ -4,6 +4,7 @@ import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
 import { parseAmount } from "@/components/entry-dialog"
+import { HistoryButton } from "@/components/entry-history"
 import { FilterLine, isActive, newFilter, passes, SortLine, ToolbarToggle, type Filter } from "@/components/ledger-filters"
 import { MonthHeading } from "@/components/month-picker"
 import { OptionSelect, Tag } from "@/components/option-select"
@@ -12,7 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Loading, Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { api, compareLabel, currencySymbol, dateLabel, money, monthLabel, monthName, plainAmount, shiftMonth, thisMonth, today, type Entry, type EntryInput, type LedgerOrder, type Stats } from "@/lib/api"
-import { Money } from "@/lib/money"
+import { Money, Original } from "@/lib/money"
 import { optionColor, useApp } from "@/lib/state"
 import { matches } from "@/lib/search"
 import { cn } from "@/lib/utils"
@@ -44,7 +45,7 @@ function TextCell({ value, onSave, label, className }: { value: string; onSave: 
 }
 
 /** An amount, as a plain number (the column header names the currency). */
-function AmountCell({ value, onSave, label = t("Amount") }: { value: number; onSave: (n: number) => Promise<boolean>; label?: string }) {
+function AmountCell({ value, onSave, label = t("Amount"), fit = false }: { value: number; onSave: (n: number) => Promise<boolean>; label?: string; fit?: boolean }) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState("")
   const commit = async () => {
@@ -60,6 +61,8 @@ function AmountCell({ value, onSave, label = t("Amount") }: { value: number; onS
   return (
     <input
       className={cn("cell amount", value < 0 && !editing && "neg")}
+      // Fitted to its number, so what was paid in another currency sits right beside it.
+      style={fit ? { width: `calc(${Math.max(4, (editing ? text : plainAmount(value)).length + 1)}ch + 16px)` } : undefined}
       aria-label={label}
       inputMode="decimal"
       value={editing ? text : plainAmount(value)}
@@ -114,7 +117,7 @@ function HeaderFigure({ label, title, children }: { label: string; title?: strin
 
 /** The ledger for one month; the month lives in the address (#/ledger/2026-11). */
 export function LedgerView({ month, setMonth, typeParam = "" }: { month: string; setMonth: (m: string) => void; typeParam?: string }) {
-  const { user, setUser, options, reloadOptions, tableVersion, quickAdd, editEntry, refund, ledger, canWrite } = useApp()
+  const { user, setUser, options, reloadOptions, tableVersion, quickAdd, editEntry, refund, ledger, canWrite, bumpTable } = useApp()
   const currency = ledger.currency
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
@@ -237,6 +240,49 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
     })
   }
 
+  // Refunding the selected purchases (refunds among them are left alone): one opens the Refund form
+  // for it, to refund all or part; several are refunded in full, at once, with Undo.
+  const selectedPurchases = (entries ?? []).filter((e) => selected.has(e.id) && e.amount > 0)
+  const refundSelected = () => {
+    const list = selectedPurchases
+    if (list.length === 1) {
+      refund(list[0])
+      setSelected(new Set())
+      return
+    }
+    ask({
+      title: tn(list.length, "Refund this purchase?", "Refund {n} purchases?"),
+      body: t("They're refunded in full, and leave the ledger."),
+      action: t("Refund"),
+      tone: "default",
+      run: async () => {
+        const done: Entry[] = []
+        try {
+          for (const e of list) {
+            const res = await api.refund({ id: e.id })
+            if (res.refunded) done.push(res.refunded)
+          }
+        } catch (err) {
+          toast.error((err as Error).message)
+        }
+        setEntries((l) => (l ?? []).filter((e) => !done.some((d) => d.id === e.id)))
+        setSelected(new Set())
+        bumpTable()
+        loadStats()
+        if (done.length)
+          toast.success(tn(done.length, "Refunded {n} purchase.", "Refunded {n} purchases."), {
+            action: {
+              label: t("Undo"),
+              onClick: () => {
+                Promise.all(done.map(({ name, type, amount, date, card, orig_amount, orig_currency }) => api.createEntry({ name, type, amount, date, card, orig_amount, orig_currency })))
+                  .then(bumpTable, (err) => toast.error((err as Error).message))
+              },
+            },
+          })
+      },
+    })
+  }
+
   const allSelected = shown.length > 0 && shown.every((e) => selected.has(e.id))
   const filtered = !!query.trim() || activeFilters > 0
   const pct = stats && stats.prev_to_date ? ((stats.to_date - stats.prev_to_date) / Math.abs(stats.prev_to_date)) * 100 : null
@@ -292,6 +338,11 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
         {selected.size > 0 ? (
           <>
             <span className="text-[13.5px] text-ink-2">{t("{n} selected", { n: selected.size })}</span>
+            {selectedPurchases.length > 0 && (
+              <button type="button" className="pill" onClick={refundSelected} title={selectedPurchases.length === 1 ? t("Refund all or part of it") : t("Refund them in full")}>
+                <Undo2Icon /> {t("Refund")}
+              </button>
+            )}
             <button type="button" className="pill danger" onClick={() => remove([...selected])}>
               <Trash2Icon /> {t("Delete")}
             </button>
@@ -374,7 +425,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
             </DropdownMenu>
             {canWrite && (
               <>
-                <button type="button" className="pill shrink-0" onClick={refund} title={t("Refund (R)")}>
+                <button type="button" className="pill shrink-0" onClick={() => refund()} title={t("Refund (R)")}>
                   <Undo2Icon /> {t("Refund")}
                 </button>
                 <button type="button" className="pill dark shrink-0" onClick={quickAdd} title={t("New entry (N)")}>
@@ -420,7 +471,8 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
             <col style={{ width: 32 }} />
             <col />
             <col style={{ width: 170 }} />
-            <col style={{ width: 140 }} />
+            {/* Wider when an amount has what was paid in another currency beside it. */}
+            <col style={{ width: shown.some((e) => e.orig_currency) ? 200 : 140 }} />
             <col style={{ width: 140 }} />
             <col style={{ width: 170 }} />
           </colgroup>
@@ -445,11 +497,21 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
             {!canWrite &&
               shown.map((e, i) => (
                 // Only viewing: the same row, as text.
-                <tr key={e.id} className="row">
+                <tr key={e.id} className="row group/row">
                   <td />
-                  <td className="px-3 font-medium">{e.name}</td>
+                  <td className="pl-3 font-medium">
+                    <span className="flex items-center gap-1">
+                      <span className="min-w-0 flex-1 truncate">{e.name}</span>
+                      <HistoryButton entry={e} currency={currency} />
+                    </span>
+                  </td>
                   <td className="px-3">{e.type && <Tag name={e.type} color={optionColor(options, "type", e.type)} className="!shadow-none !bg-transparent !px-0" />}</td>
-                  <td className={cn("px-3 text-right tabular-nums", e.amount < 0 && "text-good")}>{plainAmount(e.amount)}</td>
+                  <td className={cn("px-3 text-right tabular-nums", e.amount < 0 && "text-good")}>
+                    <span className="inline-flex items-baseline gap-2">
+                      <Original entry={e} />
+                      {plainAmount(e.amount)}
+                    </span>
+                  </td>
                   <td className={cn("px-3 tabular-nums", order.startsWith("date") && i > 0 && shown[i - 1].date === e.date && "opacity-45")}>
                     {dateLabel(e.date, { month: "short", day: "numeric" })} <span className="text-[12px] text-muted-foreground">{dateLabel(e.date, { weekday: "short" })}</span>
                   </td>
@@ -457,7 +519,7 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
                 </tr>
               ))}
             {canWrite && shown.map((e, i) => (
-              <tr key={e.id} className="row" data-selected={selected.has(e.id)}>
+              <tr key={e.id} className="row group/row" data-selected={selected.has(e.id)}>
                 <td>
                   <span className="pick grid place-items-center">
                     <Checkbox
@@ -475,13 +537,26 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
                   </span>
                 </td>
                 <td>
-                  <TextCell label={t("Name")} className="font-medium" value={e.name} onSave={(name) => update(e, { name })} />
+                  {/* The name, and at its end the history's button. */}
+                  <span className="flex items-center">
+                    <span className="min-w-0 flex-1">
+                      <TextCell label={t("Name")} className="font-medium" value={e.name} onSave={(name) => update(e, { name })} />
+                    </span>
+                    <HistoryButton entry={e} currency={currency} />
+                  </span>
                 </td>
                 <td>
                   <OptionSelect kind="type" label={t("Type")} value={e.type} options={options.types} onChange={(type) => void update(e, { type })} />
                 </td>
                 <td>
-                  <AmountCell value={e.amount} onSave={(amount) => update(e, { amount })} />
+                  {e.orig_currency ? (
+                    <span className="flex items-center justify-end">
+                      <Original entry={e} />
+                      <AmountCell fit value={e.amount} onSave={(amount) => update(e, { amount })} />
+                    </span>
+                  ) : (
+                    <AmountCell value={e.amount} onSave={(amount) => update(e, { amount })} />
+                  )}
                 </td>
                 <td>
                   <DateCell
@@ -565,7 +640,10 @@ export function LedgerView({ month, setMonth, typeParam = "" }: { month: string;
                     {e.card && <Tag name={e.card} color={optionColor(options, "card", e.card)} />}
                   </span>
                 </span>
-                <span className={cn("text-[15px] tabular-nums", e.amount < 0 && "text-good")}>{money(e.amount, currency)}</span>
+                <span className="grid justify-items-end">
+                  <span className={cn("text-[15px] tabular-nums", e.amount < 0 && "text-good")}>{money(e.amount, currency)}</span>
+                  <Original entry={e} />
+                </span>
               </button>
             </Fragment>
           ))}

@@ -99,6 +99,7 @@ export function App() {
   const [allMonths, setAllMonths] = useState(false)
   const [form, setForm] = useState<{ open: boolean; entry?: Entry | null }>({ open: false })
   const [refunding, setRefunding] = useState(false)
+  const [refundOf, setRefundOf] = useState<Entry | null>(null)
 
   useEffect(() => {
     // A new page closes the phone menu, whatever led there.
@@ -165,7 +166,11 @@ export function App() {
       // Both open over the ledger, where what they change shows up.
       if (readRoute().route !== "ledger") location.hash = "#/ledger"
       if (key === "n") setForm({ open: true })
-      else setRefunding(true)
+      else {
+        // R: a refund of nothing in particular.
+        setRefundOf(null)
+        setRefunding(true)
+      }
     }
     window.addEventListener("keydown", on)
     return () => window.removeEventListener("keydown", on)
@@ -286,7 +291,10 @@ export function App() {
     bumpTable: () => setTableVersion((v) => v + 1),
     quickAdd: () => setForm({ open: true }),
     editEntry: (entry) => setForm({ open: true, entry }),
-    refund: () => setRefunding(true),
+    refund: (of) => {
+      setRefundOf(of ?? null)
+      setRefunding(true)
+    },
   }
 
   const signOut = async () => {
@@ -482,7 +490,7 @@ export function App() {
         </div>
       </div>
       <EntryDialog open={form.open} entry={form.entry} onOpenChange={(open) => setForm((f) => ({ ...f, open }))} />
-      <EntryDialog refund open={refunding} onOpenChange={setRefunding} />
+      <EntryDialog refund of={refundOf} open={refunding} onOpenChange={setRefunding} />
       <LedgerSettingsDialog id={ledgerSettings} onClose={closeLedgerSettings} />
       <NewLedgerDialog open={newLedger} onOpenChange={setNewLedger} currency={ledger.currency} onCreated={(l) => void reloadLedgers(l.id)} />
       <Toaster position="bottom-center" />

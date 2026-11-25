@@ -28,8 +28,8 @@ export interface AppState {
   quickAdd: () => void
   /** Opens an entry's form, to change or delete it. */
   editEntry: (e: Entry) => void
-  /** Opens the refund dialog (R). */
-  refund: () => void
+  /** Opens the refund dialog (R); for a purchase, filled in from it and with it picked. */
+  refund: (of?: Entry) => void
 }
 
 export const AppContext = createContext<AppState | null>(null)
