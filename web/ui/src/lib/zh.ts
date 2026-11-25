@@ -135,6 +135,7 @@ export const ZH: Record<string, string> = {
   "The agent replied: {title}": "助手已回复：{title}",
   "Open": "打开",
   "The agent is working": "助手正在处理",
+  "last used {when}": "上次使用 {when}",
   "The agent made no progress for 5 minutes, so the turn was closed.": "助手 5 分钟没有进展，已结束这一轮。",
 
   // Trends: against the usual, month by month, the year

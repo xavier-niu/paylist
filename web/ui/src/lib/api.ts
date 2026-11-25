@@ -112,6 +112,8 @@ export interface Option {
   name: string
   color: string
   uses: number
+  /** The latest date an entry has it (YYYY-MM-DD); none when unused. */
+  last_used?: string
 }
 
 export interface Options {
