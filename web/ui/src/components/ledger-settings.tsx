@@ -3,6 +3,7 @@ import { EllipsisIcon, LogOutIcon, SettingsIcon, Trash2Icon, XIcon } from "lucid
 import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
+import { LedgerOptions } from "@/components/ledger-options"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { api, type Ledger, type LedgerMember } from "@/lib/api"
@@ -69,7 +70,7 @@ export function LedgerSettingsDialog({ id, onClose }: { id: number | null; onClo
   }, [id, ledger, onClose])
   return (
     <Dialog open={!!ledger} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-[20px] border-0 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3),0_0_0_1px_var(--rule-2)] ring-0 sm:max-w-[560px]">
+      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-[20px] border-0 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3),0_0_0_1px_var(--rule-2)] ring-0 sm:max-w-[680px]">
         {ledger && <LedgerSettings key={ledger.id} ledger={ledger} />}
       </DialogContent>
     </Dialog>
@@ -117,7 +118,7 @@ function LedgerSettings({ ledger }: { ledger: Ledger }) {
     <>
       <div className="shrink-0 border-b border-rule px-6 pt-5 pb-4 pr-14">
         <DialogTitle className="truncate text-[17px] font-semibold">{t("Ledger settings")}</DialogTitle>
-        <DialogDescription className="sr-only">{t("A ledger's name, currency and the people who have it.")}</DialogDescription>
+        <DialogDescription className="sr-only">{t("A ledger's name, currency, types and cards, and the people who have it.")}</DialogDescription>
       </div>
       <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto overscroll-contain px-6 pt-5 pb-6">
         <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_150px]">
@@ -226,6 +227,11 @@ function LedgerSettings({ ledger }: { ledger: Ledger }) {
             </div>
           </form>
         )}
+
+        <div className="grid gap-1">
+          <span className="label">{t("Types and cards")}</span>
+          <LedgerOptions ledger={ledger} />
+        </div>
       </div>
       {confirmEl}
     </>

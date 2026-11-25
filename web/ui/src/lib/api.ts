@@ -197,10 +197,11 @@ export function setSignedOutHandler(fn: () => void) {
   onSignedOut = fn
 }
 
-async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+/** A request to the server, on the ledger open unless it names another. */
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal, ledger?: number): Promise<T> {
   const res = await fetch(path, {
     method,
-    headers: { ...ledgerHeaders(), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    headers: { ...(ledger ? { "X-Paylist-Ledger": String(ledger) } : ledgerHeaders()), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
     signal,
@@ -268,10 +269,11 @@ export const api = {
   setLedgerMemberRole: (id: number, userID: number, role: "editor" | "viewer") => request<{ ok: boolean }>("PUT", `/api/ledgers/${id}/members/${userID}`, { role }),
   removeLedgerMember: (id: number, userID: number) => request<{ ok: boolean }>("DELETE", `/api/ledgers/${id}/members/${userID}`),
 
-  options: () => request<Options>("GET", "/api/options"),
-  createOption: (kind: "type" | "card", name: string, color?: string) => request<Option>("POST", "/api/options", { kind, name, color }),
-  updateOption: (id: number, o: { name?: string; color?: string }) => request<Option>("PUT", `/api/options/${id}`, o),
-  deleteOption: (id: number) => request<{ cleared: number }>("DELETE", `/api/options/${id}`),
+  // Types and cards, of the ledger open or the one given.
+  options: (ledger?: number) => request<Options>("GET", "/api/options", undefined, undefined, ledger),
+  createOption: (kind: "type" | "card", name: string, color?: string, ledger?: number) => request<Option>("POST", "/api/options", { kind, name, color }, undefined, ledger),
+  updateOption: (id: number, o: { name?: string; color?: string }, ledger?: number) => request<Option>("PUT", `/api/options/${id}`, o, undefined, ledger),
+  deleteOption: (id: number, ledger?: number) => request<{ cleared: number }>("DELETE", `/api/options/${id}`, undefined, undefined, ledger),
 
   stats: (month: string, months = 12) => request<Stats>("GET", "/api/stats" + q({ month, months, today: today() })),
   /** Every month with entries up to this one, newest first. */

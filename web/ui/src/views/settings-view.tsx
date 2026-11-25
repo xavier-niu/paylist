@@ -1,17 +1,16 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
-import { CheckIcon, Trash2Icon } from "lucide-react"
+import { CheckIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
 import { PageHeader } from "@/components/month-picker"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Spinner } from "@/components/ui/spinner"
-import { api, type AgentToken, type Option, type User } from "@/lib/api"
+import { api, type AgentToken, type User } from "@/lib/api"
 import { PRESETS } from "@/lib/presets"
 import { applyTheme, useApp } from "@/lib/state"
 import { cn } from "@/lib/utils"
-import { locale, setLanguage, t, tn, tParts, type LangPref } from "@/lib/i18n"
+import { locale, setLanguage, t, tParts, type LangPref } from "@/lib/i18n"
 
 /** One group of settings: its name above, the controls in a card. */
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -262,141 +261,6 @@ function AgentAccessSection() {
   )
 }
 
-// ---------------------------------------------------------------- options
-
-function OptionRow({ o, colors, onChanged, onDelete, readOnly }: { o: Option; colors: string[]; onChanged: () => void; onDelete: () => void; readOnly: boolean }) {
-  const [name, setName] = useState(o.name)
-  useEffect(() => setName(o.name), [o.name])
-  const save = async (change: { name?: string; color?: string }) => {
-    try {
-      await api.updateOption(o.id, change)
-      onChanged()
-    } catch (e) {
-      toast.error((e as Error).message)
-      setName(o.name)
-    }
-  }
-  if (readOnly) {
-    return (
-      <tr className="border-b border-rule" data-color={o.color}>
-        <td className="w-9 py-1">
-          <span className="grid size-7 place-items-center">
-            <span className="dot !size-2.5" />
-          </span>
-        </td>
-        <td className="h-9 px-1.5 py-1 text-[14px]">{o.name}</td>
-        <td className="figure w-14 py-1 text-right text-[12.5px] text-muted-foreground">{o.uses}</td>
-        <td className="w-9" />
-      </tr>
-    )
-  }
-  return (
-    <tr className="group border-b border-rule">
-      <td className="w-9 py-1">
-        <Popover>
-          <PopoverTrigger asChild>
-            <button type="button" className="grid size-7 place-items-center hover:bg-wash" aria-label={t("{name}'s color: {color}. Change it", { name: o.name, color: t(o.color) })} data-color={o.color}>
-              <span className="dot !size-2.5" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-44 gap-0 rounded-[12px] border-0 p-1 shadow-[0_16px_48px_rgb(0_0_0/.18),0_0_0_1px_var(--rule-2)] ring-0">
-            {colors.map((c) => (
-              <button key={c} type="button" onClick={() => void save({ color: c })} className="flex h-8 w-full items-center gap-2 rounded-[4px] px-2 text-[13px] hover:bg-wash" data-color={c}>
-                <span className="dot" /> <span className="capitalize">{t(c)}</span>
-                {c === o.color && <CheckIcon className="ml-auto size-3.5 text-blue" />}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
-      </td>
-      <td className="py-1">
-        <input
-          id={`option-${o.id}`}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => name.trim() && name !== o.name && void save({ name })}
-          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-          aria-label={t("Rename {name}", { name: o.name })}
-          maxLength={40}
-          className="h-8 w-full rounded-md bg-transparent px-1.5 text-[14px] outline-none hover:bg-wash focus:bg-sheet focus:shadow-[inset_0_0_0_1.5px_var(--ink)]"
-        />
-      </td>
-      <td className="figure w-14 py-1 text-right text-[12.5px] text-muted-foreground">{o.uses}</td>
-      <td className="w-9 py-1 text-right">
-        <button type="button" className="grid size-7 place-items-center text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-red focus-visible:opacity-100" aria-label={t("Delete {name}", { name: o.name })} onClick={onDelete}>
-          <Trash2Icon className="size-3.5" />
-        </button>
-      </td>
-    </tr>
-  )
-}
-
-function OptionList({ kind, title }: { kind: "type" | "card"; title: string }) {
-  const { options, reloadOptions, config, bumpTable, canWrite } = useApp()
-  const list = kind === "type" ? options.types : options.cards
-  const [name, setName] = useState("")
-  const [ask, confirmEl] = useConfirm()
-  const add = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!name.trim()) return
-    try {
-      await api.createOption(kind, name)
-      setName("")
-      await reloadOptions()
-    } catch (err) {
-      toast.error((err as Error).message)
-    }
-  }
-  const changed = () => {
-    void reloadOptions()
-    bumpTable()
-  }
-  return (
-    <div className="min-w-0">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-rule">
-            <th className="label py-1.5 text-left font-normal" colSpan={2}>{title}</th>
-            <th className="label py-1.5 text-right font-normal">{t("Used")}</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((o) => (
-            <OptionRow
-              key={o.id}
-              o={o}
-              colors={config.colors}
-              readOnly={!canWrite}
-              onChanged={changed}
-              onDelete={() =>
-                ask({
-                  title: kind === "type" ? t("Delete the type {name}?", { name: o.name }) : t("Delete the card {name}?", { name: o.name }),
-                  body: !o.uses
-                    ? t("No entry uses it.")
-                    : kind === "type"
-                      ? tn(o.uses, "{n} entry has it, and will have no type afterwards.", "{n} entries have it, and will have no type afterwards.")
-                      : tn(o.uses, "{n} entry has it, and will have no card afterwards.", "{n} entries have it, and will have no card afterwards."),
-                  action: t("Delete"),
-                  run: async () => {
-                    await api.deleteOption(o.id).catch((e) => toast.error((e as Error).message))
-                    changed()
-                  },
-                })
-              }
-            />
-          ))}
-        </tbody>
-      </table>
-      <form onSubmit={add} className={cn("mt-2 flex gap-2", !canWrite && "hidden")}>
-        <input id={`new-${kind}`} className="field !h-8" value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "type" ? t("Add a type") : t("Add a card")} maxLength={40} aria-label={kind === "type" ? t("New type") : t("New card")} />
-        <button type="submit" className="btn quiet" disabled={!name.trim()}>{t("Add")}</button>
-      </form>
-      {confirmEl}
-    </div>
-  )
-}
-
 // ---------------------------------------------------------------- preferences, password, members
 
 function PreferencesSection() {
@@ -576,12 +440,6 @@ export function SettingsView() {
       <div className="mx-auto mt-6 grid max-w-[700px] gap-8">
         <ModelSection />
         <AgentAccessSection />
-        <Section id="options" title={t("Types and cards")}>
-          <div className="grid gap-8 sm:grid-cols-2">
-            <OptionList kind="type" title={t("Types")} />
-            <OptionList kind="card" title={t("Cards")} />
-          </div>
-        </Section>
         <PreferencesSection />
         <PasswordSection />
         {user.is_admin && <MembersSection />}

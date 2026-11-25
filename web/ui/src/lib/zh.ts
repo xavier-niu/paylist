@@ -140,7 +140,7 @@ export const ZH: Record<string, string> = {
   "Owner": "所有者",
   "New ledger": "新建账本",
   "Ledger settings": "账本设置",
-  "A ledger's name, currency and the people who have it.": "账本的名称、货币和成员。",
+  "A ledger's name, currency, types and cards, and the people who have it.": "账本的名称、货币、分类、支付方式和成员。",
   "More for {name}": "{name} 的更多操作",
   "A ledger's name and currency.": "账本的名称和货币。",
   "Name it, such as Home or Japan trip": "起个名字，例如 家庭 或 日本旅行",
