@@ -312,7 +312,12 @@ export function App() {
       <div className="-mx-1 mt-5 min-h-0 flex-1 overflow-y-auto px-1">
         {/* The ledgers: the open one marked, the others a click away. */}
         <section aria-label={t("Ledgers")}>
-          <div className="px-2.5 pb-1.5 text-[12.5px] text-ink-2">{t("Ledgers")}</div>
+          <div className="flex items-center justify-between px-2.5 pb-1.5 text-[12.5px] text-ink-2">
+            {t("Ledgers")}
+            <button type="button" onClick={() => setNewLedger(true)} title={t("New ledger")} aria-label={t("New ledger")} className="-mr-1.5 grid size-5 place-items-center rounded-md hover:bg-wash hover:text-ink">
+              <PlusIcon className="size-3.5" />
+            </button>
+          </div>
           <ul className="grid gap-0.5">
             {ledgers.map((l) => (
               <li key={l.id}>
@@ -336,11 +341,6 @@ export function App() {
                 </button>
               </li>
             ))}
-            <li>
-              <button type="button" onClick={() => setNewLedger(true)} className="flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-wash hover:text-ink">
-                <PlusIcon className="size-3.5 shrink-0" /> {t("New ledger")}
-              </button>
-            </li>
           </ul>
         </section>
 
