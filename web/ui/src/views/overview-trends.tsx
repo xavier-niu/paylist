@@ -78,7 +78,7 @@ export function UsualCard({ stats, currency, onPickType }: { stats: Stats; curre
   const name = (r: TypeRow) => r.name || t("No type")
 
   return (
-    <section className="card p-6 sm:p-7">
+    <section className="card @container p-6 sm:p-7">
       <h2 className="card-title">{t("Against the usual")}</h2>
       {above.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -162,7 +162,7 @@ export function MonthlyCard({ stats, month, currency, onSelect }: { stats: Stats
   }
 
   return (
-    <section className="card p-6 sm:p-7">
+    <section className="card @container p-6 sm:p-7">
       <h2 className="card-title">{t("Monthly spending")}</h2>
       {done.length > 1 && (
         <div className="mt-4 grid grid-cols-3 gap-4 sm:max-w-[560px]">
@@ -218,8 +218,8 @@ export function YearCard({ year: y, currency, onSelect }: { year: YearStats; cur
   const now = thisMonth()
 
   return (
-    <section className="card p-6 sm:p-7">
-      <div className="grid gap-8 xl:grid-cols-2">
+    <section className="card @container p-6 sm:p-7">
+      <div className="grid gap-8 @min-[900px]:grid-cols-2">
         <div className="min-w-0">
           <div className="text-[14px] text-ink-2">{current ? t("Spending this year") : t("Spending in {year}", { year: String(y.year) })}</div>
           <Money value={y.total} currency={currency} className="mt-1 block text-[30px] leading-tight font-semibold tracking-[-0.01em]" />
@@ -256,7 +256,7 @@ export function YearCard({ year: y, currency, onSelect }: { year: YearStats; cur
             />
           </div>
         </div>
-        <div className="min-w-0 max-xl:border-t max-xl:border-rule max-xl:pt-6 xl:border-l xl:border-rule xl:pl-8">
+        <div className="min-w-0 border-t border-rule pt-6 @min-[900px]:border-t-0 @min-[900px]:border-l @min-[900px]:pt-0 @min-[900px]:pl-8">
           <h2 className="card-title mb-4">{t("By type")}</h2>
           <Donut data={y.by_type} format={fmt} label={t("Spending by type in {year}", { year: String(y.year) })} noun={(n) => tn(n, "{n} type", "{n} types")} />
         </div>

@@ -97,8 +97,8 @@ export function OverviewView() {
       ) : (
         <div className={cn("mt-5 grid grid-cols-1 gap-4", stale && "stale")} aria-busy={stale}>
           {/* The month at a glance */}
-          <section className="card p-6 sm:p-7">
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_372px]">
+          <section className="card @container p-6 sm:p-7">
+            <div className="grid gap-8 @min-[720px]:grid-cols-[minmax(0,1fr)_372px]">
             <div className="min-w-0">
               <div className="text-[14px] text-ink-2">{isThisMonth ? t("This month's spending") : t("Spending in {month}", { month: monthLabel(shown) })}</div>
               <Money value={stats.total} currency={currency} className="mt-1 block text-[34px] leading-tight font-semibold tracking-[-0.01em]" />
@@ -137,14 +137,14 @@ export function OverviewView() {
                 />
               </div>
             </div>
-            <div className="w-full max-w-[460px] min-w-0 lg:max-w-none lg:border-l lg:border-rule lg:pl-8">
+            <div className="mx-auto w-full max-w-[460px] min-w-0 @min-[720px]:mx-0 @min-[720px]:max-w-none @min-[720px]:border-l @min-[720px]:border-rule @min-[720px]:pl-8">
               <h2 className="card-title mb-3">{t("Day by day")}</h2>
               <CalendarHeat days={stats.days} format={fmt} onPick={toggleDay} picked={pick?.kind === "day" ? pick.key : null} />
             </div>
             </div>
 
             {/* Where it went, and how it was paid */}
-            <div className="mt-7 grid gap-x-10 gap-y-8 border-t border-rule pt-6 lg:grid-cols-2">
+            <div className="mt-7 grid gap-x-10 gap-y-8 border-t border-rule pt-6 @min-[900px]:grid-cols-2">
               <div className="min-w-0">
                 <h2 className="card-title mb-4">{t("By type")}</h2>
                 <Donut
@@ -156,7 +156,7 @@ export function OverviewView() {
                   onPick={fromDonut("type")}
                 />
               </div>
-              <div className="min-w-0 lg:border-l lg:border-rule lg:pl-10">
+              <div className="min-w-0 @min-[900px]:border-l @min-[900px]:border-rule @min-[900px]:pl-10">
                 <h2 className="card-title mb-4">{t("By card")}</h2>
                 <Donut
                   data={stats.by_card}
@@ -189,8 +189,8 @@ export function OverviewView() {
 function OverviewSkeleton() {
   return (
     <Loading className="mt-5 grid grid-cols-1 gap-4">
-      <section className="card p-6 sm:p-7">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_372px]">
+      <section className="card @container p-6 sm:p-7">
+        <div className="grid gap-8 @min-[720px]:grid-cols-[minmax(0,1fr)_372px]">
           <div className="min-w-0">
             <Skeleton className="w-36" />
             <Skeleton className="mt-3 h-9 w-56" />
@@ -198,7 +198,7 @@ function OverviewSkeleton() {
             <Skeleton className="mt-5 h-3 w-44" />
             <Skeleton className="mt-4 h-[230px] w-full rounded-[10px]" />
           </div>
-          <div className="w-full max-w-[460px] min-w-0 lg:max-w-none lg:border-l lg:border-rule lg:pl-8">
+          <div className="mx-auto w-full max-w-[460px] min-w-0 @min-[720px]:mx-0 @min-[720px]:max-w-none @min-[720px]:border-l @min-[720px]:border-rule @min-[720px]:pl-8">
             <Skeleton className="h-4 w-24" />
             <div className="mt-4 grid grid-cols-7 gap-[3px]">
               {Array.from({ length: 35 }, (_, i) => (
@@ -207,9 +207,9 @@ function OverviewSkeleton() {
             </div>
           </div>
         </div>
-        <div className="mt-7 grid gap-x-10 gap-y-8 border-t border-rule pt-6 lg:grid-cols-2">
+        <div className="mt-7 grid gap-x-10 gap-y-8 border-t border-rule pt-6 @min-[900px]:grid-cols-2">
           {[0, 1].map((k) => (
-            <div key={k} className={cn("min-w-0", k === 1 && "lg:border-l lg:border-rule lg:pl-10")}>
+            <div key={k} className={cn("min-w-0", k === 1 && "@min-[900px]:border-l @min-[900px]:border-rule @min-[900px]:pl-10")}>
               <Skeleton className="h-4 w-20" />
               <div className="mt-4 grid items-center gap-x-7 gap-y-4 sm:grid-cols-[168px_minmax(0,1fr)]">
                 <span className="relative mx-auto block size-[168px]">
@@ -226,7 +226,7 @@ function OverviewSkeleton() {
           ))}
         </div>
       </section>
-      <section className="card p-6 sm:p-7">
+      <section className="card @container p-6 sm:p-7">
         <Skeleton className="h-4 w-36" />
         <Skeleton className="mt-5 h-[200px] w-full rounded-[10px]" />
       </section>
