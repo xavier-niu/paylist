@@ -276,7 +276,7 @@ function weekdays(): string[] {
   })
 }
 
-/** Daily spending as a month calendar: one hue, darker is more, each day's amount under its date. */
+/** Daily spending as a month calendar: green, darker is more, each day's amount under its date; a day that nets below zero in red. */
 export function CalendarHeat({
   days,
   format,
@@ -297,6 +297,10 @@ export function CalendarHeat({
   // Steps by quantile of the days with spending, so one big day (rent) doesn't wash out the rest.
   const cuts = [0.2, 0.4, 0.6, 0.8].map((q) => positive[Math.floor(q * (positive.length - 1))] ?? 0)
   const step = (v: number) => (v <= 0 ? 0 : 1 + cuts.filter((c) => v > c).length)
+  // Days that net below zero get the same steps in red, by how much came back.
+  const back = days.map((d) => -d.total).filter((v) => v > 0).sort((a, b) => a - b)
+  const backCuts = [0.2, 0.4, 0.6, 0.8].map((q) => back[Math.floor(q * (back.length - 1))] ?? 0)
+  const negStep = (v: number) => (v >= 0 ? 0 : 1 + backCuts.filter((c) => -v > c).length)
   const todayStr = new Date().toDateString()
   const h = days.find((d) => d.date === hover)
   return (
@@ -306,6 +310,7 @@ export function CalendarHeat({
         {Array.from({ length: lead }, (_, i) => <div key={"l" + i} />)}
         {days.map((d) => {
           const s = step(d.total)
+          const n = negStep(d.total)
           const isToday = new Date(d.date + "T00:00").toDateString() === todayStr
           return (
             <button
@@ -319,10 +324,14 @@ export function CalendarHeat({
               aria-label={`${dateLabel(d.date)}: ${format(d.total)}, ${tn(d.count, "{n} entry", "{n} entries")}`}
               className={cn("figure flex aspect-square flex-col items-start justify-between rounded-[5px] p-1 text-left outline-offset-1 hover:outline-2 hover:outline-ink sm:px-1.5", isToday && "outline-2 outline-blue", d.date === picked && "outline-2 outline-ink", onPick && "cursor-pointer")}
               aria-pressed={onPick ? d.date === picked : undefined}
-              style={{ background: `var(--seq-${s})`, color: s >= 4 ? "var(--seq-text)" : s > 0 ? "var(--ink)" : "var(--muted-foreground)" }}
+              style={
+                n > 0
+                  ? { background: `var(--neg-${n})`, color: n >= 4 ? "var(--seq-text)" : "var(--ink)" }
+                  : { background: `var(--seq-${s})`, color: s >= 4 ? "var(--seq-text)" : s > 0 ? "var(--ink)" : "var(--muted-foreground)" }
+              }
             >
               <span className="text-[10.5px] leading-none opacity-70">{Number(d.date.slice(8))}</span>
-              {d.total !== 0 && <span className={cn("w-full truncate text-right text-[11px] leading-none font-semibold sm:text-[12px]", d.total < 0 && "text-red")}>{compactAmount(d.total)}</span>}
+              {d.total !== 0 && <span className="w-full truncate text-right text-[11px] leading-none font-semibold sm:text-[12px]">{compactAmount(d.total)}</span>}
             </button>
           )
         })}
