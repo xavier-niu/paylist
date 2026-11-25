@@ -89,7 +89,9 @@ func (s *Server) withLedger(write bool, next http.HandlerFunc) http.HandlerFunc 
 			writeError(w, http.StatusForbidden, "You can only view this ledger.")
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), ledgerKey, l)))
+		// Changes made in this request are recorded as the user's.
+		ctx := store.WithActor(context.WithValue(r.Context(), ledgerKey, l), currentUser(r.Context()).ID, "")
+		next(w, r.WithContext(ctx))
 	})
 }
 

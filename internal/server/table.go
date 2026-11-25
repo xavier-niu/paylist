@@ -111,6 +111,24 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, e)
 }
 
+// handleEntryHistory: an entry's history, oldest first.
+func (s *Server) handleEntryHistory(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "entry")
+	if !ok {
+		return
+	}
+	h, err := s.opts.Store.EntryHistory(r.Context(), currentLedger(r.Context()).ID, id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "No such entry.")
+		return
+	}
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, h)
+}
+
 func (s *Server) handleDeleteEntry(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "entry")
 	if !ok {

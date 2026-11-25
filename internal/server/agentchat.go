@@ -307,7 +307,7 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 func (s *Server) agentSession(ctx context.Context, u *store.User, l *store.Ledger) (*mcp.ClientSession, func(), error) {
 	// The agent works on the ledger open on the page, unless asked about another.
 	def := strconv.FormatInt(l.ID, 10)
-	srv := s.newMCPServer(func(*mcp.CallToolRequest) (*store.User, string, error) { return u, def, nil })
+	srv := s.newMCPServer(func(*mcp.CallToolRequest) (*store.User, string, error) { return u, def, nil }, "agent")
 	clientT, serverT := mcp.NewInMemoryTransports()
 	ss, err := srv.Connect(ctx, serverT, nil)
 	if err != nil {

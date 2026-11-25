@@ -156,31 +156,35 @@ type mcpStatsIn struct {
 
 // newMCPServer builds the MCP server whose tools work on the ledger of the user
 // caller returns.
-func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
+// newMCPServer serves the tools to one caller; via says through what ("agent"
+// for the agent page, "mcp" for outside agents), for entries' history.
+func (s *Server) newMCPServer(caller mcpCallerFunc, via string) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "paylist", Title: "Paylist", Version: "1.0.0"},
 		&mcp.ServerOptions{Instructions: mcpInstructions})
 	yes, no := true, false
 	st := s.opts.Store
-	// ledger is the ledger a call works on, if the user has it and, to change it, may.
-	ledger := func(ctx context.Context, req *mcp.CallToolRequest, want string, write bool) (*store.Ledger, error) {
+	// ledger is the ledger a call works on, if the user has it and, to change
+	// it, may; and the call's context, its changes recorded as the user's.
+	ledger := func(ctx context.Context, req *mcp.CallToolRequest, want string, write bool) (context.Context, *store.Ledger, error) {
 		u, def, err := caller(req)
 		if err != nil {
-			return nil, err
+			return ctx, nil, err
 		}
+		ctx = store.WithActor(ctx, u.ID, via)
 		if strings.TrimSpace(want) == "" {
 			want = def
 		}
 		l, err := s.pickLedger(ctx, u, want)
 		if errors.Is(err, store.ErrNotMember) {
-			return nil, fmt.Errorf("you have no ledger %q; list_ledgers shows yours", want)
+			return ctx, nil, fmt.Errorf("you have no ledger %q; list_ledgers shows yours", want)
 		}
 		if err != nil {
-			return nil, err
+			return ctx, nil, err
 		}
 		if write && !l.CanWrite() {
-			return nil, fmt.Errorf("you can only view the ledger %q", l.Name)
+			return ctx, nil, fmt.Errorf("you can only view the ledger %q", l.Name)
 		}
-		return l, nil
+		return ctx, l, nil
 	}
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -189,7 +193,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"or a date range, optionally only one type, one card or names containing a query.",
 		Annotations: &mcp.ToolAnnotations{Title: "List entries", ReadOnlyHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpListIn) (*mcp.CallToolResult, mcpListOut, error) {
-		l, err := ledger(ctx, req, in.Ledger, false)
+		ctx, l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, mcpListOut{}, err
 		}
@@ -224,7 +228,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"A type or card that isn't an option yet becomes one, so reuse existing names (list_options) where they fit.",
 		Annotations: &mcp.ToolAnnotations{Title: "Add entries", DestructiveHint: &no, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpAddIn) (*mcp.CallToolResult, mcpAddOut, error) {
-		l, err := ledger(ctx, req, in.Ledger, true)
+		ctx, l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, mcpAddOut{}, err
 		}
@@ -249,7 +253,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		Description: "Change an entry of the spending ledger: only the fields given change. An empty type or card clears it.",
 		Annotations: &mcp.ToolAnnotations{Title: "Update an entry", DestructiveHint: &yes, IdempotentHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpUpdateIn) (*mcp.CallToolResult, store.Entry, error) {
-		l, err := ledger(ctx, req, in.Ledger, true)
+		ctx, l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, store.Entry{}, err
 		}
@@ -268,7 +272,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		Description: "Delete entries from the spending ledger by id. This can't be undone.",
 		Annotations: &mcp.ToolAnnotations{Title: "Delete entries", DestructiveHint: &yes, IdempotentHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpDeleteIn) (*mcp.CallToolResult, mcpDeleteOut, error) {
-		l, err := ledger(ctx, req, in.Ledger, true)
+		ctx, l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, mcpDeleteOut{}, err
 		}
@@ -284,7 +288,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		Description: "List the options for an entry's type and card, with their colors and how many entries use each.",
 		Annotations: &mcp.ToolAnnotations{Title: "List options", ReadOnlyHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpLedgerIn) (*mcp.CallToolResult, store.Options, error) {
-		l, err := ledger(ctx, req, in.Ledger, false)
+		ctx, l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, store.Options{}, err
 		}
@@ -298,7 +302,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"deleting clears it from the entries that had it.",
 		Annotations: &mcp.ToolAnnotations{Title: "Manage an option", DestructiveHint: &yes, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpOptionIn) (*mcp.CallToolResult, mcpOptionOut, error) {
-		l, err := ledger(ctx, req, in.Ledger, true)
+		ctx, l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, mcpOptionOut{}, err
 		}
@@ -344,7 +348,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"year has the month's year: its total and count, to_date against prev_to_date (up to compare_date, against the same day a year earlier, in the current year), every month of it and of the year before, and its totals by type.",
 		Annotations: &mcp.ToolAnnotations{Title: "Get statistics", ReadOnlyHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpStatsIn) (*mcp.CallToolResult, store.Stats, error) {
-		l, err := ledger(ctx, req, in.Ledger, false)
+		ctx, l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, store.Stats{}, err
 		}
@@ -366,7 +370,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		Description: "Every month that has entries, up to the current one, newest first, with its total and count.",
 		Annotations: &mcp.ToolAnnotations{Title: "List months", ReadOnlyHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpLedgerIn) (*mcp.CallToolResult, mcpMonthsOut, error) {
-		l, err := ledger(ctx, req, in.Ledger, false)
+		ctx, l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, mcpMonthsOut{}, err
 		}
@@ -380,7 +384,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"and how often. Use it to fill in what the user leaves out when adding something they've bought before.",
 		Annotations: &mcp.ToolAnnotations{Title: "Suggest entries", ReadOnlyHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpSuggestIn) (*mcp.CallToolResult, mcpSuggestOut, error) {
-		l, err := ledger(ctx, req, in.Ledger, false)
+		ctx, l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, mcpSuggestOut{}, err
 		}
@@ -399,7 +403,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 			"the right id (ask the user if unsure); if none match, the refund is added as a negative amount and returned as added.",
 		Annotations: &mcp.ToolAnnotations{Title: "Refund", DestructiveHint: &yes, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpRefundIn) (*mcp.CallToolResult, store.RefundResult, error) {
-		l, err := ledger(ctx, req, in.Ledger, true)
+		ctx, l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, store.RefundResult{}, err
 		}
@@ -435,7 +439,7 @@ func (s *Server) newMCPServer(caller mcpCallerFunc) *mcp.Server {
 		if err != nil {
 			return nil, mcpProfileOut{}, err
 		}
-		l, err := ledger(ctx, req, in.Ledger, false)
+		ctx, l, err := ledger(ctx, req, in.Ledger, false)
 		if err != nil {
 			return nil, mcpProfileOut{}, err
 		}
@@ -454,7 +458,7 @@ func (s *Server) mcpHandler() http.Handler {
 			}
 		}
 		return nil, "", errors.New("send an agent token: Authorization: Bearer plt_…")
-	})
+	}, "mcp")
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, &mcp.StreamableHTTPOptions{
 		Stateless:    true,
 		JSONResponse: true,

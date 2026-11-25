@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -592,5 +593,32 @@ func TestFX(t *testing.T) {
 	}
 	if code := status(t, e.do(t, &http.Client{}, "GET", "/api/fx?from=USD&to=CNY", nil)); code != 401 {
 		t.Errorf("signed out: %d", code)
+	}
+}
+
+func TestEntryHistoryAPI(t *testing.T) {
+	e := newEnv(t)
+	c := e.signIn(t, "hist@example.com")
+	ent := decodeJSON[store.Entry](t, e.do(t, c, "POST", "/api/entries", map[string]any{"name": "Tea", "amount": 8, "date": "2026-11-24"}))
+	decodeJSON[store.Entry](t, e.do(t, c, "PUT", fmt.Sprintf("/api/entries/%d", ent.ID), map[string]any{"amount": 9}))
+	h := decodeJSON[[]store.EntryEvent](t, e.do(t, c, "GET", fmt.Sprintf("/api/entries/%d/history", ent.ID), nil))
+	if len(h) != 2 || h[0].Action != "created" || h[0].By != "hist@example.com" || h[0].Via != "" || h[1].Action != "changed" || fmt.Sprint(h[1].Changes["amount"]) != "[8 9]" {
+		t.Fatalf("history: %+v", h)
+	}
+	// What the agent adds says so.
+	readEvents(t, e.do(t, c, "POST", "/api/agent/chat", map[string]any{"message": "add Coffee 12.5 Food Cash"}))
+	page := decodeJSON[entriesPage](t, e.do(t, c, "GET", "/api/entries", nil))
+	var coffee int64
+	for _, x := range page.Entries {
+		if x.Name == "Coffee" {
+			coffee = x.ID
+		}
+	}
+	if h := decodeJSON[[]store.EntryEvent](t, e.do(t, c, "GET", fmt.Sprintf("/api/entries/%d/history", coffee), nil)); len(h) != 1 || h[0].Via != "agent" {
+		t.Errorf("agent's entry: %+v", h)
+	}
+	// Another ledger's entry, or none: not found.
+	if code := status(t, e.do(t, c, "GET", "/api/entries/999999/history", nil)); code != 404 {
+		t.Errorf("missing: %d", code)
 	}
 }

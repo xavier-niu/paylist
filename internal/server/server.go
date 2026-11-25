@@ -98,6 +98,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/entries", s.withLedger(true, s.handleCreateEntry))
 	mux.HandleFunc("POST /api/entries/delete", s.withLedger(true, s.handleDeleteEntries))
 	mux.HandleFunc("PUT /api/entries/{id}", s.withLedger(true, s.handleUpdateEntry))
+	mux.HandleFunc("GET /api/entries/{id}/history", s.withLedger(false, s.handleEntryHistory))
 	mux.HandleFunc("DELETE /api/entries/{id}", s.withLedger(true, s.handleDeleteEntry))
 	mux.HandleFunc("GET /api/export.csv", s.withLedger(false, s.handleExportCSV))
 	mux.HandleFunc("GET /api/options", s.withLedger(false, s.handleListOptions))

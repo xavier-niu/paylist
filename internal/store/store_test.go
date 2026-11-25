@@ -587,6 +587,57 @@ func TestEntryOriginal(t *testing.T) {
 	}
 }
 
+func TestEntryHistory(t *testing.T) {
+	ctx := context.Background()
+	st, u := newStore(t)
+	L := personal(t, st, u)
+	sam, err := st.CreateUser(ctx, "sam@example.com", "Sam", "password1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine := WithActor(ctx, u.ID, "")
+	got, err := st.CreateEntries(mine, L, []EntryInput{entry("Lunch", "Food", 12, "2026-11-24", "Cash")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := got[0].ID
+	// Sam, through the agent, changes the amount and the card; a save changing nothing adds nothing.
+	amount, card := 15.0, "Visa"
+	if _, err := st.UpdateEntry(WithActor(ctx, sam.ID, "agent"), L, id, EntryInput{Amount: &amount, Card: &card}); err != nil {
+		t.Fatal(err)
+	}
+	same := "Lunch"
+	if _, err := st.UpdateEntry(mine, L, id, EntryInput{Name: &same}); err != nil {
+		t.Fatal(err)
+	}
+	h, err := st.EntryHistory(ctx, L, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h) != 2 {
+		t.Fatalf("history: %+v", h)
+	}
+	if h[0].Action != EntryCreated || h[0].UserID != u.ID || h[0].Via != "" || fmt.Sprint(h[0].Changes["amount"]) != "[<nil> 12]" {
+		t.Errorf("created: %+v", h[0])
+	}
+	if h[1].Action != EntryChanged || h[1].By != "Sam" || h[1].Via != "agent" || fmt.Sprint(h[1].Changes["amount"]) != "[12 15]" || fmt.Sprint(h[1].Changes["card"]) != "[Cash Visa]" || len(h[1].Changes) != 2 {
+		t.Errorf("changed: %+v", h[1])
+	}
+	// Not in another ledger.
+	if _, err := st.EntryHistory(ctx, L+999, id); !errors.Is(err, ErrNotFound) {
+		t.Errorf("another ledger: %v", err)
+	}
+	// Gone with its entry.
+	if _, err := st.DeleteEntries(ctx, L, []int64{id}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	st.db.QueryRow(`SELECT COUNT(*) FROM entry_events WHERE entry_id = ?`, id).Scan(&n)
+	if n != 0 {
+		t.Errorf("%d events left after the entry went", n)
+	}
+}
+
 // Writes at once (the agent in the background, Undo restoring several) all
 // land: one waits for the other rather than failing.
 func TestConcurrentWrites(t *testing.T) {

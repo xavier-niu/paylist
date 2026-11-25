@@ -270,7 +270,16 @@ func (s *Store) insertEntry(ctx context.Context, tx *sql.Tx, ledgerID int64, in 
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	// Its history starts with what it was made with.
+	c := change{"name": {nil, name}, "amount": {nil, fromCents(cents)}}
+	if o := origText(orig, origCur); o != "" {
+		c["orig"] = []any{nil, o}
+	}
+	return id, logEntry(ctx, tx, id, EntryCreated, c)
 }
 
 // UpdateEntry changes the given fields of an entry.
@@ -292,6 +301,8 @@ func (s *Store) UpdateEntry(ctx context.Context, ledgerID, id int64, in EntryInp
 		orig.Valid = true
 	}
 	origCur := e.OrigCurrency
+	before := *e
+	wasOrig := origText(orig, origCur)
 	if in.Name != nil {
 		if e.Name, err = cleanEntryName(*in.Name); err != nil {
 			return nil, err
@@ -330,6 +341,16 @@ func (s *Store) UpdateEntry(ctx context.Context, ledgerID, id int64, in EntryInp
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE entries SET name = ?, type = ?, amount = ?, date = ?, card = ?, orig_amount = ?, orig_currency = ?, updated_at = ?
 		WHERE ledger_id = ? AND id = ?`, e.Name, e.Type, cents, e.Date, e.Card, orig, origCur, now(), ledgerID, id); err != nil {
+		return nil, err
+	}
+	c := change{}
+	c.add("name", before.Name, e.Name)
+	c.add("type", before.Type, e.Type)
+	c.add("amount", fromCents(was), fromCents(cents))
+	c.add("date", before.Date, e.Date)
+	c.add("card", before.Card, e.Card)
+	c.add("orig", wasOrig, origText(orig, origCur))
+	if err := logEntry(ctx, tx, id, EntryChanged, c); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

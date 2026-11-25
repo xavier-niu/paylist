@@ -187,6 +187,19 @@ var migrations = []string{
 	// cents) and the currency; the entry's amount is in the ledger's.
 	`ALTER TABLE entries ADD COLUMN orig_amount INTEGER;
 	ALTER TABLE entries ADD COLUMN orig_currency TEXT NOT NULL DEFAULT '';`,
+
+	// 4: each entry's history: who created or changed it, how (the app, the
+	// agent, MCP), when, and what changed, from what to what.
+	`CREATE TABLE entry_events (
+		id         INTEGER PRIMARY KEY,
+		entry_id   INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+		user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		via        TEXT NOT NULL DEFAULT '',
+		action     TEXT NOT NULL,
+		changes    TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL
+	);
+	CREATE INDEX entry_events_entry ON entry_events(entry_id, id);`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {
