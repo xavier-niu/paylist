@@ -4,6 +4,7 @@ import { toast } from "sonner"
 
 import { EntryDialog } from "@/components/entry-dialog"
 import { NewLedgerDialog } from "@/components/ledger-dialog"
+import { LedgerMenu, LedgerSettingsDialog } from "@/components/ledger-settings"
 import { Logo, Wordmark } from "@/components/logo"
 import {
   DropdownMenu,
@@ -56,6 +57,8 @@ export function App() {
   const [ledgers, setLedgers] = useState<Ledger[]>([])
   const [ledgerID, setLedgerID] = useState(0)
   const [newLedger, setNewLedger] = useState(false)
+  const [ledgerSettings, setLedgerSettings] = useState<number | null>(null)
+  const closeLedgerSettings = useCallback(() => setLedgerSettings(null), [])
   const [booting, setBooting] = useState(true)
   const [loc, setLoc] = useState(readRoute)
   const [tableVersion, setTableVersion] = useState(0)
@@ -283,7 +286,7 @@ export function App() {
               </DropdownMenuItem>
             ))}
             <DropdownMenuItem onSelect={() => setNewLedger(true)}><PlusIcon /> {t("New ledger")}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => (location.hash = "#/settings")}><SettingsIcon /> {t("Ledger settings")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setLedgerSettings(ledger.id)}><SettingsIcon /> {t("Ledger settings")}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="truncate font-normal text-muted-foreground">{session.user.email}</DropdownMenuLabel>
             <DropdownMenuItem onSelect={signOut}><LogOutIcon /> {t("Sign out")}</DropdownMenuItem>
@@ -320,7 +323,7 @@ export function App() {
           </div>
           <ul className="grid gap-0.5">
             {ledgers.map((l) => (
-              <li key={l.id}>
+              <li key={l.id} className="group/ledger relative">
                 <button
                   type="button"
                   aria-current={l.id === ledger.id ? "true" : undefined}
@@ -329,16 +332,20 @@ export function App() {
                     if (l.id !== ledger.id) void switchLedger(l.id)
                   }}
                   title={l.role === "owner" ? l.name : t("{name}, shared by {owner}", { name: l.name, owner: l.owner })}
-                  className="flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[13.5px] hover:bg-wash aria-[current=true]:bg-fill aria-[current=true]:font-medium"
+                  className="flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[13.5px] group-hover/ledger:bg-wash aria-[current=true]:bg-fill aria-[current=true]:font-medium"
                 >
                   <BookOpenIcon className="size-3.5 shrink-0 text-ink-2" />
                   <span className="min-w-0 flex-1 truncate">{l.name}</span>
-                  {l.role !== "owner" ? (
-                    <span className="shrink-0 text-[11.5px] font-normal text-muted-foreground">{l.role === "viewer" ? t("Viewer") : t("Editor")}</span>
-                  ) : (
-                    l.members > 1 && <UsersIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  )}
+                  {/* Its role, or that it's shared, where its ⋯ shows on hover. */}
+                  <span className="shrink-0 group-hover/ledger:invisible group-has-[[data-state=open]]/ledger:invisible">
+                    {l.role !== "owner" ? (
+                      <span className="text-[11.5px] font-normal text-muted-foreground">{l.role === "viewer" ? t("Viewer") : t("Editor")}</span>
+                    ) : (
+                      l.members > 1 && <UsersIcon className="size-3.5 text-muted-foreground" />
+                    )}
+                  </span>
                 </button>
+                <LedgerMenu ledger={l} onSettings={() => setLedgerSettings(l.id)} />
               </li>
             ))}
           </ul>
@@ -445,6 +452,7 @@ export function App() {
       </div>
       <EntryDialog open={form.open} entry={form.entry} onOpenChange={(open) => setForm((f) => ({ ...f, open }))} />
       <EntryDialog refund open={refunding} onOpenChange={setRefunding} />
+      <LedgerSettingsDialog id={ledgerSettings} onClose={closeLedgerSettings} />
       <NewLedgerDialog open={newLedger} onOpenChange={setNewLedger} currency={ledger.currency} onCreated={(l) => void reloadLedgers(l.id)} />
       <Toaster position="bottom-center" />
     </AppContext.Provider>
