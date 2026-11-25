@@ -33,8 +33,8 @@ export function EntryList({
   const total = (entries ?? []).reduce((s, e) => s + Math.round(e.amount * 100), 0) / 100
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[80vh] gap-0 overflow-hidden rounded-[20px] border-0 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3),0_0_0_1px_var(--rule-2)] ring-0 sm:max-w-[620px]">
-        <div className="flex items-baseline gap-3 border-b border-rule px-6 pt-5 pb-4 pr-14">
+      <DialogContent className="flex max-h-[80vh] flex-col gap-0 overflow-hidden rounded-[20px] border-0 bg-sheet p-0 shadow-[0_16px_48px_rgb(0_0_0/.3),0_0_0_1px_var(--rule-2)] ring-0 sm:max-w-[620px]">
+        <div className="flex shrink-0 items-baseline gap-3 border-b border-rule px-6 pt-5 pb-4 pr-14">
           <DialogTitle className="flex min-w-0 items-center gap-2 text-[17px] font-semibold">
             {color && <span className="dot" data-color={color} />}
             <span className="truncate">{title}</span>
@@ -58,7 +58,7 @@ export function EntryList({
         ) : entries.length === 0 ? (
           <p className="px-6 py-6 text-[13.5px] text-ink-2">{t("No entries.")}</p>
         ) : (
-          <ul className="min-h-0 overflow-y-auto p-2">
+          <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
             {entries.map((e) => (
               <li key={e.id}>
                 <button
