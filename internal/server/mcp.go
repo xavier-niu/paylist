@@ -121,12 +121,13 @@ type mcpMonthsOut struct {
 
 type mcpRefundIn struct {
 	Ledger string   `json:"ledger,omitempty" jsonschema:"the ledger, by name or id (list_ledgers shows them); the one last open in Paylist when left out"`
-	ID     int64    `json:"id,omitempty" jsonschema:"a purchase's id (from list_entries, or from the matches of an earlier call), to refund that one"`
+	ID     int64    `json:"id,omitempty" jsonschema:"a purchase's id (from list_entries, or from the matches of an earlier call), to refund that one; with an amount below its own, only that part"`
 	Name   string   `json:"name,omitempty" jsonschema:"the purchase's name, as entered (case doesn't matter)"`
 	Amount *float64 `json:"amount,omitempty" jsonschema:"how much came back"`
 	Type   string   `json:"type,omitempty" jsonschema:"the type to record the refund under if no purchase matches"`
 	Card   string   `json:"card,omitempty" jsonschema:"the card the money came back to, if no purchase matches"`
 	Date   string   `json:"date,omitempty" jsonschema:"YYYY-MM-DD, the refund's date if no purchase matches; today when left out"`
+	New    bool     `json:"new,omitempty" jsonschema:"add it as a refund of its own (a negative amount) even if a purchase matches"`
 }
 
 type mcpProfileOut struct {
@@ -400,14 +401,16 @@ func (s *Server) newMCPServer(caller mcpCallerFunc, via string) *mcp.Server {
 		Description: "Record a refund the way the ledger's Refund form does. Give the purchase's id, or its name and amount " +
 			"(with the type, card and date, in case nothing matches): a purchase from the last 120 days with the same name and amount " +
 			"is deleted and returned as refunded; if several match, nothing changes and they come back as matches, so call again with " +
-			"the right id (ask the user if unsure); if none match, the refund is added as a negative amount and returned as added.",
+			"the right id (ask the user if unsure); if none match, the refund is added as a negative amount and returned as added. " +
+			"For part of a purchase (50 back on 100), give its id and the amount that came back: the purchase goes down by it and is returned as reduced. " +
+			"With new, the refund is added as its own negative amount whatever matches.",
 		Annotations: &mcp.ToolAnnotations{Title: "Refund", DestructiveHint: &yes, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpRefundIn) (*mcp.CallToolResult, store.RefundResult, error) {
 		ctx, l, err := ledger(ctx, req, in.Ledger, true)
 		if err != nil {
 			return nil, store.RefundResult{}, err
 		}
-		res, err := st.Refund(ctx, l.ID, store.RefundInput{ID: in.ID, Name: in.Name, Amount: in.Amount, Type: in.Type, Card: in.Card, Date: in.Date}, time.Now())
+		res, err := st.Refund(ctx, l.ID, store.RefundInput{ID: in.ID, Name: in.Name, Amount: in.Amount, Type: in.Type, Card: in.Card, Date: in.Date, New: in.New}, time.Now())
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, store.RefundResult{}, fmt.Errorf("there is no entry %d", in.ID)
 		}

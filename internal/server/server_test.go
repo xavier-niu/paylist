@@ -621,4 +621,9 @@ func TestEntryHistoryAPI(t *testing.T) {
 	if code := status(t, e.do(t, c, "GET", "/api/entries/999999/history", nil)); code != 404 {
 		t.Errorf("missing: %d", code)
 	}
+	// A refund marked new is added even though Tea matches by name and amount.
+	res := decodeJSON[store.RefundResult](t, e.do(t, c, "POST", "/api/refund", map[string]any{"name": "Tea", "amount": 9, "type": "Food", "card": "Cash", "new": true, "today": "2026-11-25"}))
+	if res.Added == nil || res.Added.Amount != -9 || res.Refunded != nil {
+		t.Errorf("new refund: %+v", res)
+	}
 }

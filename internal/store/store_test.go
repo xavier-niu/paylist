@@ -638,6 +638,91 @@ func TestEntryHistory(t *testing.T) {
 	}
 }
 
+func TestRefundPart(t *testing.T) {
+	ctx := context.Background()
+	st, u := newStore(t)
+	L := personal(t, st, u)
+	today := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+	got, err := st.CreateEntries(ctx, L, []EntryInput{
+		entry("Shoes", "Shopping", 100, "2026-11-20", "Visa"),
+		entry("Shoes", "Shopping", 50, "2026-11-10", "Visa"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	big := got[0]
+	// Matching 50: the 50 first, then the 100 that it could be part of.
+	fifty := 50.0
+	m, _ := st.RefundMatches(ctx, L, "shoes", &fifty, today, 5)
+	if len(m) != 2 || m[0].Amount != 50 || m[1].Amount != 100 {
+		t.Fatalf("matches: %+v", m)
+	}
+	// Without a name: by how the amount starts, the same amount first.
+	if m, _ := st.RefundMatches(ctx, L, "", &fifty, today, 5); len(m) != 1 || m[0].Amount != 50 {
+		t.Errorf("by amount: %+v", m)
+	}
+	st.CreateEntries(ctx, L, []EntryInput{entry("Supermarket", "Food", 238.4, "2026-11-23", ""), entry("TV", "", 2380, "2026-11-22", ""), entry("Cheap", "", 23.8, "2026-11-21", "")})
+	n238 := 238.0
+	if m, _ := st.RefundMatches(ctx, L, "", &n238, today, 5); len(m) != 2 || m[0].Name != "Supermarket" || m[1].Name != "TV" {
+		t.Errorf("238: %+v", m)
+	}
+	n2384 := 238.4
+	if m, _ := st.RefundMatches(ctx, L, "", &n2384, today, 5); len(m) != 1 || m[0].Amount != 238.4 {
+		t.Errorf("238.4: %+v", m)
+	}
+	nothing := 77.0
+	if m, _ := st.RefundMatches(ctx, L, "", &nothing, today, 5); len(m) != 0 {
+		t.Errorf("by an amount nothing cost: %+v", m)
+	}
+	// Without an id, the same amount is undone, never a part.
+	thirty := 30.0
+	if res, err := st.Refund(ctx, L, RefundInput{Name: "Shoes", Amount: &thirty, Type: "Shopping", Card: "Visa"}, today); err != nil || res.Added == nil || res.Added.Amount != -30 {
+		t.Fatalf("30 without an id: %+v %v", res, err)
+	}
+	// Picked, 50 of the 100: it's 50 now, and its history says so.
+	res, err := st.Refund(WithActor(ctx, u.ID, ""), L, RefundInput{ID: big.ID, Amount: &fifty}, today)
+	if err != nil || res.Reduced == nil || res.Reduced.Amount != 50 || res.Refunded != nil {
+		t.Fatalf("part: %+v %v", res, err)
+	}
+	h, _ := st.EntryHistory(ctx, L, big.ID)
+	if last := h[len(h)-1]; last.Action != EntryRefunded || fmt.Sprint(last.Changes["amount"]) != "[100 50]" {
+		t.Errorf("history: %+v", h)
+	}
+	// More than it cost: refused. All of it: deleted.
+	lots := 80.0
+	if _, err := st.Refund(ctx, L, RefundInput{ID: big.ID, Amount: &lots}, today); err == nil {
+		t.Error("a refund of more than it cost was accepted")
+	}
+	if res, err := st.Refund(ctx, L, RefundInput{ID: big.ID, Amount: &fifty}, today); err != nil || res.Refunded == nil {
+		t.Fatalf("the rest: %+v %v", res, err)
+	}
+	// Paid in another currency: what came back in it comes off it too.
+	usd, amount, orig := "USD", 66.65, 10.0
+	in := entry("Book", "", amount, "2026-11-21", "")
+	in.OrigAmount, in.OrigCurrency = &orig, &usd
+	b, _ := st.CreateEntries(ctx, L, []EntryInput{in})
+	back, backOrig := 33.32, 5.0
+	res, err = st.Refund(ctx, L, RefundInput{ID: b[0].ID, Amount: &back, OrigAmount: &backOrig, OrigCurrency: "USD"}, today)
+	if err != nil || res.Reduced.Amount != 33.33 || res.Reduced.OrigAmount == nil || *res.Reduced.OrigAmount != 5 {
+		t.Fatalf("part in USD: %+v %v", res, err)
+	}
+	// Bought in USD, part refunded in the ledger's currency: the USD is worked
+	// out again at the purchase's rate. 100 USD at 666.45, 333 back: 333.45 and 50.03 USD.
+	orig, amount = 100, 666.45
+	in = entry("Coat", "", amount, "2026-11-22", "")
+	in.OrigAmount, in.OrigCurrency = &orig, &usd
+	coat, _ := st.CreateEntries(ctx, L, []EntryInput{in})
+	cny := 333.0
+	res, err = st.Refund(ctx, L, RefundInput{ID: coat[0].ID, Amount: &cny}, today)
+	if err != nil || res.Reduced.Amount != 333.45 || res.Reduced.OrigCurrency != "USD" || res.Reduced.OrigAmount == nil || *res.Reduced.OrigAmount != 50.03 {
+		t.Fatalf("part in CNY of a USD purchase: %+v %v", res.Reduced, err)
+	}
+	h, _ = st.EntryHistory(ctx, L, coat[0].ID)
+	if last := h[len(h)-1]; fmt.Sprint(last.Changes["orig"]) != "[100.00 USD 50.03 USD]" {
+		t.Errorf("history of the recalculated USD: %+v", last)
+	}
+}
+
 // Writes at once (the agent in the background, Undo restoring several) all
 // land: one waits for the other rather than failing.
 func TestConcurrentWrites(t *testing.T) {
