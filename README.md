@@ -89,10 +89,36 @@ claude mcp add --transport http paylist https://pay.example.com/mcp \
 | `get_stats` | A month's total, change from the same days of the month before and from the usual, daily totals, totals by type and by card, each type month by month, and the year against the last |
 | `list_months` | Every month with entries, with its total and count |
 | `get_exchange_rate` | What one currency is worth in another on a day |
+| `channels` | Where the user is sent messages: list, add, change, remove or test a webhook (with headers of their own), Slack, Discord, Feishu, DingTalk, WeCom, Bark or ntfy channel |
+| `ledger_reports` | The reports the user gets of a ledger, brief notes on how a day, week or month compares with the usual: turn them on or off, set their time, time zone, language, channels and whether AI adds a suggestion, or preview or send one now |
 
 Everything you can do with your ledgers in Paylist, an agent can do through these tools. Account settings, passwords, model keys, tokens and the server's accounts stay in the app.
 
 A token reaches only its owner's ledgers, those shared with them included, with the same role they have in the app, and can be revoked at any time.
+
+## Reports
+
+Paylist can send you a brief note on a ledger's spending: how the day, week or month compares with the usual, and the types that rose or fell most.
+
+```
+💰 Paylist Report · Personal
+
+Yesterday (Tue, Nov 24)
+  Total ¥245.50
+  ↑ much higher than usual (¥105.20 a day)
+
+Month so far
+  Total ¥3,210.00
+  ↑ higher than usual (¥2,720.00 by now)
+
+By type, month so far
+    ↑ Shopping +133%
+    ↓ Transport -76%
+```
+
+- **Channels**, in **Settings → Channels**, are where it goes: a webhook (sent Paylist's JSON, with headers of your own such as `Authorization`, kept encrypted and never shown again), Slack, Discord, Feishu, DingTalk, WeCom, Bark or ntfy. **Test** sends one a short message; one that fails says why.
+- **Reports**, in each ledger's **Ledger settings**, are yours to choose, on a shared ledger too: **daily** (yesterday against a usual day, and the month so far), **weekly** on Mondays (last week against the eight before) and **monthly** on the 1st (last month against the usual month), at the time and in the language you pick, to the channels you pick. **Send now** sends one at once.
+- **AI suggestion**: with an AI model chosen in Settings and the switch on, it ends the note with a short paragraph on what to do about it, such as where to cut back.
 
 ## Ledgers, shared
 
