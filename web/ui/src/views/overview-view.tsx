@@ -24,6 +24,9 @@ export function OverviewView() {
   // What's picked in a chart, whose entries are listed under it.
   const [pick, setPick] = useState<Pick | null>(null)
   const [entries, setEntries] = useState<Entry[] | null>(null)
+  // A month picked in Monthly spending, and its entries (null while loading).
+  const [listMonth, setListMonth] = useState<string | null>(null)
+  const [monthEntries, setMonthEntries] = useState<Entry[] | null>(null)
   useEffect(() => setPick(null), [month])
   const wantEntries = pick !== null
   useEffect(() => {
@@ -52,6 +55,19 @@ export function OverviewView() {
       live = false
     }
   }, [month, tableVersion])
+
+  useEffect(() => {
+    if (!listMonth) return
+    let live = true
+    setMonthEntries(null)
+    api
+      .entries(listMonth)
+      .then((r) => live && setMonthEntries(r.entries))
+      .catch((e) => toast.error((e as Error).message))
+    return () => {
+      live = false
+    }
+  }, [listMonth, tableVersion])
 
   const fmt = (v: number) => money(v, currency)
   const fmtTick = (v: number, compact: boolean) => (compact ? money(v, currency, true) : money(v, currency).replace(/[.,]00(?=\D*$)/, ""))
@@ -174,13 +190,14 @@ export function OverviewView() {
           <UsualCard stats={stats} currency={currency} onPickType={(name, color) => setPick({ kind: "type", key: name, names: [name], label: name || t("No type"), color: name ? color : "gray" })} />
 
           {/* Month by month */}
-          <MonthlyCard stats={stats} month={month} currency={currency} onSelect={setMonth} />
+          <MonthlyCard stats={stats} month={month} currency={currency} onSelect={setListMonth} />
 
           {/* The year against the one before */}
-          <YearCard year={stats.year} currency={currency} onSelect={setMonth} />
+          <YearCard year={stats.year} currency={currency} />
         </div>
       )}
       {pick && list(pick)}
+      {listMonth && <EntryList title={monthLabel(listMonth)} entries={monthEntries} show={{ date: true, type: true, card: true }} onClose={() => setListMonth(null)} />}
     </div>
   )
 }

@@ -204,7 +204,7 @@ function yearCompareLabel(y: YearStats): string {
 }
 
 /** The year: its spending against last year's, its months beside last year's, and where it went. */
-export function YearCard({ year: y, currency, onSelect }: { year: YearStats; currency: string; onSelect: (month: string) => void }) {
+export function YearCard({ year: y, currency }: { year: YearStats; currency: string }) {
   const fmt = (v: number) => money(v, currency)
   const fmtTick = (v: number, compact: boolean) => (compact ? money(v, currency, true) : money(v, currency).replace(/[.,]00(?=\D*$)/, ""))
   const current = y.year === new Date().getFullYear()
@@ -215,7 +215,6 @@ export function YearCard({ year: y, currency, onSelect }: { year: YearStats; cur
     return first < 0 ? 0 : Math.max(1, upTo - first)
   }, [y, current])
   const biggest = y.months.reduce<(typeof y.months)[number] | null>((a, m) => (m.total > 0 && (!a || m.total > a.total) ? m : a), null)
-  const now = thisMonth()
 
   return (
     <section className="card @container p-6 sm:p-7">
@@ -252,7 +251,6 @@ export function YearCard({ year: y, currency, onSelect }: { year: YearStats; cur
               }))}
               format={fmt}
               formatTick={fmtTick}
-              onSelect={(m) => m <= now && onSelect(m)}
             />
           </div>
         </div>
