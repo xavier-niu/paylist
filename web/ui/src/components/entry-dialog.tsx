@@ -3,7 +3,7 @@ import { CalendarIcon, CheckIcon, ChevronDownCircleIcon, CoinsIcon, HashIcon, Pe
 import { toast } from "sonner"
 
 import { EntryHistory } from "@/components/entry-history"
-import { OptionSelect, Tag } from "@/components/option-select"
+import { ChoiceSelect, OptionSelect, Tag } from "@/components/option-select"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
 import { api, currencySymbol, dateLabel, money, monthLabel, today, type Entry, type FxRate, type Suggestion } from "@/lib/api"
@@ -60,6 +60,34 @@ export function EntryDialog({
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const amountRef = useRef<HTMLInputElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  // Shift+Enter adds (or saves, or refunds); a plain Enter is for picking in
+  // the lists, and never does, unless it's on the button itself.
+  const plainEnter = useRef(false)
+  useEffect(() => {
+    if (!open) return
+    const down = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Enter" || e.isComposing) return
+      if (e.shiftKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        plainEnter.current = false
+        formRef.current?.requestSubmit()
+        return
+      }
+      const on = document.activeElement
+      plainEnter.current = !(on instanceof HTMLButtonElement && on.type === "submit")
+    }
+    const up = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Enter") plainEnter.current = false
+    }
+    window.addEventListener("keydown", down, true)
+    window.addEventListener("keyup", up, true)
+    return () => {
+      window.removeEventListener("keydown", down, true)
+      window.removeEventListener("keyup", up, true)
+    }
+  }, [open])
   const nameRef = useRef<HTMLInputElement>(null)
   // What was just added, while the form stays open for the next one.
   const [added, setAdded] = useState<{ name: string; month: string; n: number } | null>(null)
@@ -152,6 +180,17 @@ export function EntryDialog({
     } else if (showSuggestions && e.key === "ArrowUp") {
       e.preventDefault()
       setActive((a) => (a <= 0 ? suggestions.length - 1 : a - 1))
+    } else if (e.key === "Tab" && !e.shiftKey && showSuggestions) {
+      // On to the amount, taking the suggestion arrowed to, as Enter does.
+      // Moved here rather than left to the browser, which loses its way when
+      // the list closes as the name loses focus.
+      e.preventDefault()
+      if (active >= 0) {
+        pick(suggestions[active])
+      } else {
+        setSuggesting(false)
+        amountRef.current?.focus()
+      }
     } else if (e.key === "Enter") {
       if (showSuggestions && active >= 0) {
         e.preventDefault()
@@ -276,6 +315,8 @@ export function EntryDialog({
   // Adding keeps the form open for the next entry (same date and card); saving a change closes it.
   const save = async (e?: FormEvent) => {
     e?.preventDefault()
+    // A plain Enter in a field (or a list it opened) doesn't add: Shift+Enter does.
+    if (plainEnter.current) return
     if (!ready || busy || (refund && !matchesReady)) return
     setBusy(true)
     try {
@@ -345,7 +386,7 @@ export function EntryDialog({
           }
         }}
       >
-        <form onSubmit={save}>
+        <form ref={formRef} onSubmit={save}>
           <div className="px-7 pt-6 pb-1">
             {/* Which form this is; the name is a field like the others, below. */}
             <DialogTitle className="flex items-center gap-2 text-[13px] font-normal text-ink-2">
@@ -397,6 +438,8 @@ export function EntryDialog({
                         type="button"
                         role="option"
                         aria-selected={i === active}
+                        // Out of the Tab order: the arrows go round them, and Tab goes on to the amount.
+                        tabIndex={-1}
                         // Keep the focus in the name, so picking doesn't close the list first.
                         onMouseDown={(e) => e.preventDefault()}
                         onMouseEnter={() => setActive(i)}
@@ -496,29 +539,14 @@ export function EntryDialog({
               // Paid in another currency: typed in it, saved in the ledger's.
               <div className={row}>
                 <span className={name_}><CoinsIcon /> {t("Currency")}</span>
-                <select
+                <ChoiceSelect
                   id="entry-currency"
                   value={cur}
-                  onChange={(e) => setCur(e.target.value)}
-                  // Reached with Tab, its list opens, as the other choices' do (where the browser allows it).
-                  onFocus={(e) => {
-                    const el = e.currentTarget
-                    if (el.matches(":focus-visible")) {
-                      try {
-                        el.showPicker?.()
-                      } catch {
-                        /* not allowed here */
-                      }
-                    }
-                  }}
-                  aria-label={t("Currency")}
-                  className="h-[34px] w-fit cursor-pointer appearance-none rounded-md bg-transparent px-2 text-[14px] outline-none hover:bg-wash focus:bg-wash"
-                >
-                  <option value={ledger.currency}>{ledger.currency}</option>
-                  {CURRENCIES.filter((c) => c !== ledger.currency).map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                  choices={[ledger.currency, ...CURRENCIES.filter((c) => c !== ledger.currency)]}
+                  onChange={setCur}
+                  label={t("Currency")}
+                  className="h-[34px] w-fit cursor-pointer rounded-md bg-transparent px-2 text-left text-[14px] outline-none hover:bg-wash focus:bg-wash"
+                />
               </div>
             )}
             {entry && <EntryHistory entry={entry} currency={ledger.currency} />}
@@ -593,7 +621,7 @@ export function EntryDialog({
             <button type="button" className="btn ghost" onClick={() => onOpenChange(false)}>
               {entry || !added ? t("Cancel") : t("Done")}
             </button>
-            <button type="submit" className={cn("btn", refund && picked && !partial && !locked && "danger")} disabled={!ready || busy || (refund && !matchesReady)}>
+            <button type="submit" title="Shift+Enter" className={cn("btn", refund && picked && !partial && !locked && "danger")} disabled={!ready || busy || (refund && !matchesReady)}>
               {busy && <Spinner className="size-3.5" />}
               {refund ? (picked ? (partial ? t("Refund part") : locked ? t("Refund") : t("Delete purchase")) : t("Add refund")) : entry ? t("Save") : t("Add")}
             </button>

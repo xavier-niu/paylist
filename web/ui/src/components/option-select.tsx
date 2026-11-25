@@ -225,3 +225,145 @@ export function OptionSelect({
     </>
   )
 }
+
+/**
+ * A dropdown of fixed choices, such as currencies, that behaves as the type
+ * and card ones do: reached with Tab, its list opens; typing narrows it, the
+ * arrows and Enter pick, and Tab goes on to the next field (taking the match
+ * typed for). A native select can't: while its list is open, it keeps Tab.
+ */
+export function ChoiceSelect({
+  id,
+  value,
+  choices,
+  onChange,
+  label,
+  className,
+}: {
+  id?: string
+  value: string
+  choices: string[]
+  onChange: (choice: string) => void
+  label: string
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const [active, setActive] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const justClosed = useRef(false)
+  const tabbing = useRef(false)
+  const q = query.trim().toLowerCase()
+  const rows = useMemo(() => (q ? choices.filter((c) => c.toLowerCase().includes(q)) : choices), [choices, q])
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" })
+  }, [active])
+
+  const close = () => {
+    justClosed.current = true
+    setOpen(false)
+    setQuery("")
+  }
+  const pick = (c: string) => {
+    close()
+    if (c !== value) onChange(c)
+  }
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "ArrowDown" && rows.length) {
+      e.preventDefault()
+      setActive((a) => (a + 1) % rows.length)
+    } else if (e.key === "ArrowUp" && rows.length) {
+      e.preventDefault()
+      setActive((a) => (a - 1 + rows.length) % rows.length)
+    } else if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      if (rows[active]) pick(rows[active])
+    } else if (e.key === "Tab") {
+      e.preventDefault()
+      tabbing.current = true
+      if (q && rows[active]) pick(rows[active])
+      else close()
+      const from = triggerRef.current
+      requestAnimationFrame(() => {
+        tabbing.current = false
+        justClosed.current = false
+        if (from) focusNext(from, e.shiftKey ? -1 : 1)
+      })
+    }
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) justClosed.current = true
+        setOpen(o)
+        setQuery("")
+        // The list opens at the choice there is.
+        setActive(Math.max(0, choices.indexOf(value)))
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          ref={triggerRef}
+          id={id}
+          type="button"
+          className={className}
+          aria-label={`${label}: ${value}`}
+          onFocus={(e) => {
+            if (!open && !justClosed.current && e.currentTarget.matches(":focus-visible")) {
+              setActive(Math.max(0, choices.indexOf(value)))
+              setOpen(true)
+            }
+          }}
+          onBlur={() => (justClosed.current = false)}
+        >
+          {value}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        data-sheet
+        align="start"
+        sideOffset={2}
+        className="w-48 gap-0 overflow-hidden rounded-[14px] border border-rule-2 p-0 shadow-[0_16px_48px_rgb(0_0_0/.18)] ring-0"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault()
+          inputRef.current?.focus()
+        }}
+        onCloseAutoFocus={(e) => tabbing.current && e.preventDefault()}
+      >
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setActive(0)
+          }}
+          onKeyDown={onKey}
+          placeholder={t("Search")}
+          className="h-10 w-full border-b border-rule bg-transparent px-3.5 text-[14px] outline-none placeholder:text-muted-foreground"
+          maxLength={20}
+        />
+        <div ref={listRef} className="max-h-64 overflow-y-auto py-1" role="listbox" aria-label={label}>
+          {rows.map((c, i) => (
+            <button
+              key={c}
+              type="button"
+              role="option"
+              tabIndex={-1}
+              aria-selected={i === active}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => pick(c)}
+              className={cn("mx-1 flex h-9 w-[calc(100%-8px)] items-center gap-2 rounded-[8px] px-2.5 text-left text-[14px]", i === active && "bg-wash")}
+            >
+              <span className="flex-1">{c}</span>
+              {c === value && <CheckIcon className="size-4 text-ink" />}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
