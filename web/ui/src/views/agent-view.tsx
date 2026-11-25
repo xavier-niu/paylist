@@ -7,7 +7,8 @@ import { PageHeader } from "@/components/month-picker"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Loading, Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
-import { api, ApiError, type ChatMessage, type ChatSummary, type ToolCall, type ToolResult } from "@/lib/api"
+import * as runs from "@/lib/agent-runs"
+import { api, ApiError, type AgentEvent, type ChatMessage, type ChatSummary, type ToolCall, type ToolResult } from "@/lib/api"
 import { ACCEPT, isImage, readAttachments, sizeLabel, type Attachment } from "@/lib/attachments"
 import { renderMarkdown } from "@/lib/markdown"
 import { PRESETS } from "@/lib/presets"
@@ -35,7 +36,6 @@ const TOOLS: Record<string, [running: string, done: string]> = {
   refund: ["recording a refund", "recorded a refund"],
   get_profile: ["reading the profile", "read the profile"],
 }
-const CHANGES = new Set(["add_entries", "update_entry", "delete_entries", "manage_option", "refund"])
 
 const SUGGESTIONS = () => [
   t("Add lunch 35 and a metro ride 4.50 today, paid by card"),
@@ -107,7 +107,7 @@ function ToolLine({ call, result }: { call: ToolCall; result?: ToolResult }) {
 }
 
 export function AgentView({ chatId }: { chatId: string }) {
-  const { model, bumpTable, reloadOptions } = useApp()
+  const { model } = useApp()
   const [chats, setChats] = useState<ChatSummary[]>([])
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(false)
@@ -126,22 +126,108 @@ export function AgentView({ chatId }: { chatId: string }) {
   const [ask, confirmEl] = useConfirm()
 
   const loadChats = useCallback(() => {
-    api.chats().then(setChats).catch(() => {})
+    api
+      .chats()
+      .then((l) => {
+        setChats(l)
+        runs.sync(l)
+      })
+      .catch(() => {})
   }, [])
   useEffect(loadChats, [loadChats])
 
-  // Open the conversation in the address (or a new one).
+  // Leaving the page only stops following the turn: it runs on, on the server.
+  useEffect(
+    () => () => {
+      abortRef.current?.abort()
+      runs.setViewing("")
+    },
+    [],
+  )
+
+  // A turn's events, as it starts or as it's followed again.
+  const apply = (ev: AgentEvent) => {
+    switch (ev.type) {
+      case "chat":
+        if (currentRef.current !== ev.id) {
+          currentRef.current = ev.id
+          history.replaceState(null, "", `#/agent/${ev.id}`)
+        }
+        runs.setViewing(ev.id)
+        runs.started(ev.id, ev.title)
+        loadChats()
+        break
+      case "text":
+        setItems((l) => {
+          const last = l[l.length - 1]
+          if (last?.kind === "assistant") return [...l.slice(0, -1), { ...last, text: last.text + ev.text }]
+          return [...l, { kind: "assistant", text: ev.text }]
+        })
+        break
+      case "tool_call":
+        setItems((l) => [...l, { kind: "tool", call: ev.call }])
+        break
+      case "tool_result":
+        setItems((l) => l.map((it) => (it.kind === "tool" && it.call.id === ev.result.id ? { ...it, result: ev.result } : it)))
+        break
+      case "notice":
+        setItems((l) => [...l, { kind: "notice", text: ev.text }])
+        break
+      case "stopped":
+        setItems((l) => [...l, { kind: "notice", text: t("Stopped.") }])
+        break
+      case "error":
+        setItems((l) => [...l, { kind: "error", text: t(ev.error) }])
+        break
+    }
+  }
+
+  // Follows the turn underway in a conversation opened mid-turn; when it ends, the saved conversation replaces what was pieced together.
+  const follow = async (id: string) => {
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+    setRunning(true)
+    runs.started(id, chats.find((c) => c.id === id)?.title ?? "")
+    try {
+      await api.chatStream(id, apply, ctrl.signal)
+    } catch (e) {
+      if (!ctrl.signal.aborted) setItems((l) => [...l, { kind: "error", text: (e as Error).message }])
+    } finally {
+      if (abortRef.current === ctrl) abortRef.current = null
+      // Aborted: the page went, or another conversation was opened; the turn runs on.
+      if (!ctrl.signal.aborted) {
+        setRunning(false)
+        runs.ended(id)
+        loadChats()
+        api
+          .chat(id)
+          .then((c) => currentRef.current === id && setItems(toItems(c.messages)))
+          .catch(() => {})
+      }
+    }
+  }
+
+  // Open the conversation in the address (or a new one): if a turn is underway in it, follow it from its start.
   useEffect(() => {
+    runs.setViewing(chatId)
     if (chatId === currentRef.current && (items.length > 0 || !chatId)) return
     currentRef.current = chatId
     abortRef.current?.abort()
+    abortRef.current = null
+    setRunning(false)
     setItems([])
     if (!chatId) return
     setLoading(true)
     api
       .chat(chatId)
       .then((c) => {
-        if (currentRef.current === chatId) setItems(toItems(c.messages))
+        if (currentRef.current !== chatId) return
+        if (c.running) {
+          setItems(toItems(c.messages.slice(0, c.turn_start)))
+          void follow(chatId)
+        } else {
+          setItems(toItems(c.messages))
+        }
       })
       .catch((e) => {
         toast.error((e as Error).message)
@@ -204,61 +290,31 @@ export function AgentView({ chatId }: { chatId: string }) {
     setRunning(true)
     const ctrl = new AbortController()
     abortRef.current = ctrl
-    let changed = false
-    const push = (fn: (l: Item[]) => Item[]) => setItems(fn)
     try {
-      await api.agentTurn(
-        { chat_id: currentRef.current || undefined, message: text, attachments: attachments.length ? attachments : undefined },
-        (ev) => {
-          switch (ev.type) {
-            case "chat":
-              if (currentRef.current !== ev.id) {
-                currentRef.current = ev.id
-                history.replaceState(null, "", `#/agent/${ev.id}`)
-              }
-              loadChats()
-              break
-            case "text":
-              push((l) => {
-                const last = l[l.length - 1]
-                if (last?.kind === "assistant") return [...l.slice(0, -1), { ...last, text: last.text + ev.text }]
-                return [...l, { kind: "assistant", text: ev.text }]
-              })
-              break
-            case "tool_call":
-              if (CHANGES.has(ev.call.name)) changed = true
-              push((l) => [...l, { kind: "tool", call: ev.call }])
-              break
-            case "tool_result":
-              push((l) => l.map((it) => (it.kind === "tool" && it.call.id === ev.result.id ? { ...it, result: ev.result } : it)))
-              break
-            case "notice":
-              push((l) => [...l, { kind: "notice", text: ev.text }])
-              break
-            case "error":
-              push((l) => [...l, { kind: "error", text: ev.error }])
-              break
-          }
-        },
-        ctrl.signal,
-      )
+      await api.agentTurn({ chat_id: currentRef.current || undefined, message: text, attachments: attachments.length ? attachments : undefined }, apply, ctrl.signal)
     } catch (e) {
+      // Aborted: the page left, and the turn runs on without it.
       if (!ctrl.signal.aborted) {
         const msg = (e as Error).message
-        push((l) => [...l, { kind: "error", text: e instanceof ApiError && e.status === 401 && !model.active ? t("Choose a model in Settings first.") : msg }])
-      } else {
-        push((l) => [...l, { kind: "notice", text: t("Stopped.") }])
+        setItems((l) => [...l, { kind: "error", text: e instanceof ApiError && e.status === 401 && !model.active ? t("Choose a model in Settings first.") : msg }])
       }
     } finally {
-      setRunning(false)
-      abortRef.current = null
-      if (changed) {
-        bumpTable()
-        void reloadOptions()
+      if (abortRef.current === ctrl) abortRef.current = null
+      // Aborted: the page went, or another conversation was opened; the turn runs on.
+      if (!ctrl.signal.aborted) {
+        setRunning(false)
+        // What it may have changed is reloaded where the app hears the turn ended.
+        if (currentRef.current) runs.ended(currentRef.current)
+        loadChats()
+        inputRef.current?.focus()
       }
-      loadChats()
-      inputRef.current?.focus()
     }
+  }
+
+  // Stop asks the server: leaving the page doesn't stop a turn.
+  const stop = () => {
+    if (currentRef.current) void api.stopChat(currentRef.current).catch((e) => toast.error((e as Error).message))
+    else abortRef.current?.abort()
   }
 
   const submit = (e: FormEvent) => {
@@ -274,7 +330,10 @@ export function AgentView({ chatId }: { chatId: string }) {
 
   const newChat = () => {
     abortRef.current?.abort()
+    abortRef.current = null
+    setRunning(false)
     currentRef.current = ""
+    runs.setViewing("")
     setItems([])
     location.hash = "#/agent"
     inputRef.current?.focus()
@@ -322,7 +381,10 @@ export function AgentView({ chatId }: { chatId: string }) {
               {chats.map((c) => (
                 <div key={c.id} className="group relative">
                   <a href={`#/agent/${c.id}`} className={cn("block rounded-[10px] py-2 pr-9 pl-2.5 hover:bg-wash", c.id === active && "bg-wash")} title={c.title}>
-                    <span className="block truncate text-[14px]">{c.title}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate text-[14px]">{c.title}</span>
+                      {c.running && <Spinner className="size-3 shrink-0 text-ink-2" aria-label={t("Working")} />}
+                    </span>
                     <span className="block text-[12px] text-ink-2">{new Date(c.updated_at).toLocaleDateString(locale(), { day: "numeric", month: "short" })}</span>
                   </a>
                   <button type="button" aria-label={t("Delete {name}", { name: c.title })} onClick={() => removeChat(c)} className="absolute top-1/2 right-2 hidden -translate-y-1/2 rounded-md p-1.5 text-ink-2 group-hover:block hover:text-red focus-visible:block">
@@ -495,7 +557,7 @@ export function AgentView({ chatId }: { chatId: string }) {
             </a>
             <span className="flex-1" />
             {running ? (
-              <button type="button" aria-label={t("Stop")} onClick={() => abortRef.current?.abort()} className="grid size-8 place-items-center rounded-full bg-ink text-paper">
+              <button type="button" aria-label={t("Stop")} title={t("Stop")} onClick={stop} className="grid size-8 place-items-center rounded-full bg-ink text-paper">
                 <SquareIcon className="size-3 fill-current" />
               </button>
             ) : (

@@ -14,10 +14,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Spinner } from "@/components/ui/spinner"
 import { Toaster } from "@/components/ui/sonner"
 import { api, money, monthLabel, plainAmount, setCurrentLedger, setSignedOutHandler, thisMonth, type Config, type Entry, type GroupTotal, type Ledger, type ModelSettings, type MonthTotal, type Options, type User } from "@/lib/api"
 import { AppContext, applyTheme, type AppState } from "@/lib/state"
 import { loadPinyin } from "@/lib/search"
+import * as agentRuns from "@/lib/agent-runs"
+import { useAgentWorking } from "@/lib/agent-runs"
 import { cn } from "@/lib/utils"
 import { AgentView } from "@/views/agent-view"
 import { LoginView } from "@/views/login-view"
@@ -181,6 +184,21 @@ export function App() {
     setOptions(await api.options())
   }, [])
 
+  // Agent turns run on when their page is left. When one ends, what it may
+  // have changed is reloaded, and unless its conversation is on screen, a
+  // note says so, with the way back to it. Turns already underway (started
+  // before a reload, or elsewhere) are found when signing in.
+  const agentWorking = useAgentWorking()
+  useEffect(() => {
+    if (!signedIn) return
+    agentRuns.onFinished((id, title, seen) => {
+      setTableVersion((v) => v + 1)
+      void reloadOptions().catch(() => {})
+      if (!seen) toast.success(t("The agent replied: {title}", { title }), { action: { label: t("Open"), onClick: () => (location.hash = `#/agent/${id}`) } })
+    })
+    api.chats().then(agentRuns.sync).catch(() => {})
+  }, [signedIn, reloadOptions])
+
   if (booting) {
     return (
       // The mark, breathing, where the page will be; shown after a beat so a quick start doesn't flash it.
@@ -322,6 +340,7 @@ export function App() {
         {NAV.map(({ route, label, icon: Icon }) => (
           <a key={route} href={`#/${route}`} onClick={go} className="side-item" aria-current={loc.route === route ? "page" : undefined}>
             <Icon /> {label()}
+            {route === "agent" && agentWorking && <Spinner className="ml-auto size-3.5 text-ink-2" aria-label={t("The agent is working")} />}
           </a>
         ))}
       </nav>

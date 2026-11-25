@@ -203,6 +203,8 @@ export interface ChatSummary {
   title: string
   created_at: string
   updated_at: string
+  /** A turn is underway (it runs on when the page goes). */
+  running?: boolean
 }
 
 export type AgentEvent =
@@ -212,6 +214,7 @@ export type AgentEvent =
   | { type: "tool_result"; result: ToolResult }
   | { type: "notice"; text: string }
   | { type: "error"; error: string; status: number }
+  | { type: "stopped" }
   | { type: "done" }
 
 export class ApiError extends Error {
@@ -313,43 +316,58 @@ export const api = {
   months: () => request<MonthTotal[]>("GET", "/api/months" + q({ upto: thisMonth() })),
 
   chats: () => request<ChatSummary[]>("GET", "/api/chats"),
-  chat: (id: string) => request<{ chat: ChatSummary; messages: ChatMessage[] }>("GET", `/api/chats/${id}`),
+  /** A conversation; while a turn is underway, `turn_start` is where its replies begin (follow them with chatStream). */
+  chat: (id: string) => request<{ chat: ChatSummary; messages: ChatMessage[]; running?: boolean; turn_start?: number }>("GET", `/api/chats/${id}`),
   deleteChat: (id: string) => request<{ ok: boolean }>("DELETE", `/api/chats/${id}`),
+  /** Stops the turn underway in a conversation. */
+  stopChat: (id: string) => request<{ ok: boolean }>("POST", `/api/chats/${id}/stop`, {}),
 
-  /** Runs one agent turn, calling onEvent for each streamed event. */
-  async agentTurn(body: { chat_id?: string; message: string; attachments?: Attachment[] }, onEvent: (e: AgentEvent) => void, signal: AbortSignal) {
-    const res = await fetch("/api/agent/chat", {
-      method: "POST",
-      headers: { ...ledgerHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, today: today() }),
-      credentials: "same-origin",
-      signal,
-    })
-    if (!res.ok || !res.body) {
-      let msg = t("Request failed ({status}).", { status: res.status })
-      try {
-        const j = await res.json()
-        if (j?.error) msg = j.error
-      } catch {
-        /* not JSON */
-      }
-      throw new ApiError(t(msg), res.status)
-    }
-    const reader = res.body.getReader()
-    const dec = new TextDecoder()
-    let buf = ""
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += dec.decode(value, { stream: true })
-      let nl: number
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl).trim()
-        buf = buf.slice(nl + 1)
-        if (line) onEvent(JSON.parse(line) as AgentEvent)
-      }
-    }
+  /** Starts an agent turn and follows it, calling onEvent for each event. It runs on if this stops following (signal). */
+  agentTurn(body: { chat_id?: string; message: string; attachments?: Attachment[] }, onEvent: (e: AgentEvent) => void, signal: AbortSignal) {
+    return readEvents(
+      fetch("/api/agent/chat", {
+        method: "POST",
+        headers: { ...ledgerHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, today: today() }),
+        credentials: "same-origin",
+        signal,
+      }),
+      onEvent,
+    )
   },
+  /** Follows the turn underway in a conversation, from its start. */
+  chatStream(id: string, onEvent: (e: AgentEvent) => void, signal: AbortSignal) {
+    return readEvents(fetch(`/api/chats/${id}/stream`, { credentials: "same-origin", signal }), onEvent)
+  },
+}
+
+/** Reads a stream of agent events (NDJSON), one call each. */
+async function readEvents(response: Promise<Response>, onEvent: (e: AgentEvent) => void) {
+  const res = await response
+  if (!res.ok || !res.body) {
+    let msg = t("Request failed ({status}).", { status: res.status })
+    try {
+      const j = await res.json()
+      if (j?.error) msg = j.error
+    } catch {
+      /* not JSON */
+    }
+    throw new ApiError(t(msg), res.status)
+  }
+  const reader = res.body.getReader()
+  const dec = new TextDecoder()
+  let buf = ""
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += dec.decode(value, { stream: true })
+    let nl: number
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim()
+      buf = buf.slice(nl + 1)
+      if (line) onEvent(JSON.parse(line) as AgentEvent)
+    }
+  }
 }
 
 /** The browser's date, YYYY-MM-DD. */
