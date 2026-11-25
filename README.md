@@ -34,6 +34,7 @@ One month as a table, edited in place, like a spreadsheet.
 
 - **Press N** anywhere to add an entry. The form stays open for the next one, and as you type a name it offers the ones you've used before (by pinyin too: "kf" finds 咖啡), filling in the type, card and last amount.
 - **Press R** for a refund, filled in like a new entry. If a purchase from the last 120 days has the same name and amount, it is deleted (with Undo); if not, the refund is added as a negative amount.
+- **Paid in another currency?** Choose it at the bottom of the form and type the amount in it: Paylist shows what it comes to at that day's exchange rate, and saves that, in the ledger's currency. Rates are the European Central Bank's, from [Frankfurter](https://frankfurter.dev), or for currencies it doesn't cover, today's from [ExchangeRate-API](https://www.exchangerate-api.com).
 - Click any cell to change it; Enter or Esc saves. Types and cards are colored options, found by name or pinyin; a new name is created once you confirm it.
 - **Filter** by name, type, amount, date or card, each a chip you can change, and **Sort** by date, amount or name, setting the one you like as the default. Search, select rows to delete several at once, and export the month as CSV.
 - The header keeps the month to date and the change from last month in view; the sidebar keeps this month's spending by type and your recent months a click away.
