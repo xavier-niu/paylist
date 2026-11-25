@@ -381,9 +381,13 @@ func writeReport(rep *report, lang string) string {
 
 const suggestPrompt = `Paylist, a personal spending tracker, sends its user a note on what one of their ledgers spent over a period against what it usually does. You get the note's figures as JSON, with "note": the note itself, which the user reads just before your words.
 
-Add a suggestion to it: one short paragraph, about 50 to 100 words (a guide, not a limit), with one or two concrete, practical things the user could do next %s, such as where to cut back, a type to keep an eye on, or that they're doing well and how to keep it so. If the %s was ordinary, say so briefly and keep the suggestion small.
+Add a short paragraph, about 50 to 100 words (a guide, not a limit), in two parts.
 
-You can look into the ledger first with the tools, which only read it (the ledger is the one named; leave "ledger" out to use it): list_entries shows what was bought, so what is behind a type that rose, such as one large purchase or many small ones; get_stats and list_months show the months before. Look only as far as helps, a few calls at most, then write. Ground what you say in what you saw, naming the types or entries; don't list the figures again, and don't invent any.
+First, what was unusual: what went well above or below the usual, the types that rose or fell (types_higher_than_usual, types_lower_than_usual) and the period as a whole when it was far off. For what matters most, say what is behind it, such as one large purchase, many small ones, or something new. Leave out what was ordinary; if nothing was unusual, say so in a few words.
+
+Then, one or two concrete suggestions for next %s that would keep its spending below its usual, or at least at it: tied to what you found, such as a type to hold to its usual amount, a kind of purchase to skip or put off, or a habit that kept a type low to keep up. No generic tips.
+
+Look into the ledger first with the tools, which only read it (the ledger is the one named; leave "ledger" out to use it): list_entries, by type and dates, shows the entries behind a type that rose or fell; get_stats and list_months show the months before. Look only as far as helps, a few calls at most, then write. Ground what you say in what you saw, naming the types and entries; don't list the note's figures again, and don't invent any.
 
 Your last reply is the paragraph itself. Plain text: one paragraph, no greeting, no heading, no markdown, no emoji. Write in %s.`
 
@@ -408,7 +412,7 @@ func (s *Server) suggest(ctx context.Context, u *store.User, l *store.Ledger, re
 	f["today"] = time.Now().Format("2006-01-02")
 	facts, _ := json.Marshal(f)
 	unit := map[string]string{store.ReportDaily: "day", store.ReportWeekly: "week", store.ReportMonthly: "month"}[rep.Period]
-	system := fmt.Sprintf(suggestPrompt, unit, unit, tr(lang, "English", "Simplified Chinese"))
+	system := fmt.Sprintf(suggestPrompt, unit, tr(lang, "English", "Simplified Chinese"))
 	history, err := agent.Run(ctx, client, session, system, []llm.Message{{Role: "user", Text: string(facts)}}, func(agent.Event) error { return nil }, nil)
 	if err != nil {
 		s.opts.Logger.Warn("report: the model failed; sending it without a suggestion", "user", u.ID, "err", err)
