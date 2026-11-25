@@ -193,6 +193,52 @@ export interface MonthTotal {
   count: number
 }
 
+/** Somewhere Paylist sends messages: a webhook, or a chat or push service. */
+export interface Channel {
+  id: number
+  kind: string
+  name: string
+  url: string
+  /** The names of the headers it sends; their values are never shown. */
+  headers: string[]
+  last_at?: string
+  last_error?: string
+  created_at: string
+}
+
+/** A new channel, or what to change of one; a header without a value keeps it. */
+export interface ChannelInput {
+  kind?: string
+  name?: string
+  url?: string
+  headers?: { name: string; value: string }[]
+}
+
+export type ReportPeriod = "daily" | "weekly" | "monthly"
+
+/** Which of a ledger's reports you get, when, in which language, on which channels. */
+export interface Reports {
+  daily: boolean
+  weekly: boolean
+  monthly: boolean
+  time: string
+  timezone: string
+  language: string
+  /** Your AI model writes the note, when you have one (ai_ready). */
+  ai: boolean
+  ai_ready: boolean
+  channels: number[]
+}
+
+/** A report, as it would be sent. */
+export interface Report {
+  period: ReportPeriod
+  from: string
+  to: string
+  title: string
+  text: string
+}
+
 export interface AgentToken {
   id: number
   name: string
@@ -298,6 +344,17 @@ export const api = {
   saveModel: (preset: string, conf: ProviderConf, apiKey?: string | null) =>
     request<ModelSettings>("PUT", "/api/me/model", { preset, ...conf, ...(apiKey === undefined ? {} : { api_key: apiKey ?? "" }) }),
 
+  channels: () => request<Channel[]>("GET", "/api/channels"),
+  addChannel: (c: ChannelInput) => request<Channel>("POST", "/api/channels", c),
+  updateChannel: (id: number, c: ChannelInput) => request<Channel>("PUT", `/api/channels/${id}`, c),
+  deleteChannel: (id: number) => request<{ ok: boolean }>("DELETE", `/api/channels/${id}`),
+  /** Sends a channel a short message; it comes back with how that went. */
+  testChannel: (id: number, language: string) => request<Channel>("POST", `/api/channels/${id}/test`, { language }),
+  /** Your reports of a ledger. */
+  reports: (ledger: number) => request<Reports>("GET", "/api/reports", undefined, undefined, ledger),
+  saveReports: (ledger: number, r: Reports) => request<Reports>("PUT", "/api/reports", r, undefined, ledger),
+  sendReport: (ledger: number, period: ReportPeriod, timezone: string, language: string) =>
+    request<{ report: Report; channels: Channel[] }>("POST", "/api/reports/send", { period, timezone, language }, undefined, ledger),
   tokens: () => request<AgentToken[]>("GET", "/api/me/tokens"),
   createToken: (name: string) => request<{ token: string; info: AgentToken; endpoint: string }>("POST", "/api/me/tokens", { name }),
   deleteToken: (id: number) => request<{ ok: boolean }>("DELETE", `/api/me/tokens/${id}`),

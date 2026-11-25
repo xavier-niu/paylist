@@ -4,6 +4,7 @@ import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
 import { LedgerOptions } from "@/components/ledger-options"
+import { LedgerReports } from "@/components/ledger-reports"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { api, type Ledger, type LedgerMember } from "@/lib/api"
 import { CURRENCIES } from "@/lib/currencies"
@@ -59,7 +60,7 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; 
   )
 }
 
-/** A ledger's settings, in a window: its name and currency, and the people who have it. */
+/** A ledger's settings, in a window: its name and currency, the people who have it, your reports of it, and its types and cards. */
 export function LedgerSettingsDialog({ id, onClose }: { id: number | null; onClose: () => void }) {
   const { ledgers } = useApp()
   const ledger = ledgers.find((l) => l.id === id)
@@ -227,6 +228,8 @@ function LedgerSettings({ ledger }: { ledger: Ledger }) {
             </div>
           </form>
         )}
+
+        <LedgerReports ledger={ledger} />
 
         <div className="grid gap-1">
           <span className="label">{t("Types and cards")}</span>

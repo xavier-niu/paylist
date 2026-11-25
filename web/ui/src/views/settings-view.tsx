@@ -1,16 +1,17 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
-import { CheckIcon } from "lucide-react"
+import { CheckIcon, CircleAlertIcon, PencilIcon, PlusIcon, SendIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
 import { PageHeader } from "@/components/month-picker"
+import { ChannelDialog, kindName } from "@/components/channel-dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
-import { api, type AgentToken, type User } from "@/lib/api"
+import { api, type AgentToken, type Channel, type User } from "@/lib/api"
 import { PRESETS } from "@/lib/presets"
 import { applyTheme, useApp } from "@/lib/state"
 import { cn } from "@/lib/utils"
-import { locale, setLanguage, t, tParts, type LangPref } from "@/lib/i18n"
+import { lang, locale, setLanguage, t, tParts, type LangPref } from "@/lib/i18n"
 
 /** One group of settings: its name above, the controls in a card. */
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -256,6 +257,109 @@ function AgentAccessSection() {
           </table>
         )}
       </div>
+      {confirmEl}
+    </Section>
+  )
+}
+
+// ---------------------------------------------------------------- channels
+
+/** Where Paylist sends you messages, such as your ledgers' reports. */
+function ChannelsSection() {
+  const [channels, setChannels] = useState<Channel[] | null>(null)
+  const [editing, setEditing] = useState<Channel | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [testing, setTesting] = useState(0)
+  const [ask, confirmEl] = useConfirm()
+
+  const load = () =>
+    api
+      .channels()
+      .then(setChannels)
+      .catch((e) => toast.error((e as Error).message))
+  useEffect(() => {
+    void load()
+  }, [])
+
+  const test = async (c: Channel) => {
+    setTesting(c.id)
+    try {
+      const after = await api.testChannel(c.id, lang())
+      setChannels((l) => (l ?? []).map((x) => (x.id === c.id ? after : x)))
+      toast.success(t("Sent."))
+    } catch (e) {
+      toast.error((e as Error).message)
+      void load()
+    } finally {
+      setTesting(0)
+    }
+  }
+
+  const iconBtn = "grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-wash hover:text-ink disabled:opacity-40"
+  return (
+    <Section id="channels" title={t("Channels")}>
+      <div className="grid gap-2">
+        {channels && channels.length > 0 && (
+          <ul>
+            {channels.map((c) => (
+              <li key={c.id} className="flex min-h-12 items-center gap-3 border-b border-rule py-1.5 pl-1.5">
+                <span className="grid min-w-0 flex-1">
+                  <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="truncate text-[14px] font-medium">{c.name}</span>
+                    <span className="shrink-0 text-[12px] text-muted-foreground">{kindName(c.kind)}</span>
+                  </span>
+                  <span className="truncate font-mono text-[12px] text-ink-2" title={c.url}>{c.url}</span>
+                  {c.last_error ? (
+                    <span className="flex items-start gap-1 text-[12px] text-red">
+                      <CircleAlertIcon className="mt-[2px] size-3 shrink-0" />
+                      <span className="break-words">{c.last_error}</span>
+                    </span>
+                  ) : c.last_at ? (
+                    <span className="figure text-[12px] text-muted-foreground">{t("Sent {time}", { time: new Date(c.last_at).toLocaleString(locale(), { dateStyle: "short", timeStyle: "short" }) })}</span>
+                  ) : null}
+                </span>
+                <button type="button" className={iconBtn} disabled={testing === c.id} aria-label={t("Test")} title={t("Test")} onClick={() => void test(c)}>
+                  {testing === c.id ? <Spinner className="size-4" /> : <SendIcon className="size-4" />}
+                </button>
+                <button type="button" className={iconBtn} aria-label={t("Edit")} title={t("Edit")} onClick={() => setEditing(c)}>
+                  <PencilIcon className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  className={cn(iconBtn, "hover:text-red")}
+                  aria-label={t("Remove")}
+                  title={t("Remove")}
+                  onClick={() =>
+                    ask({
+                      title: t("Remove {name}?", { name: c.name }),
+                      body: t("Reports sent on it stop."),
+                      action: t("Remove"),
+                      run: async () => {
+                        await api.deleteChannel(c.id).catch((e) => toast.error((e as Error).message))
+                        setChannels((l) => (l ?? []).filter((x) => x.id !== c.id))
+                      },
+                    })
+                  }
+                >
+                  <Trash2Icon className="size-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button type="button" className="btn quiet justify-self-start" onClick={() => setAdding(true)}>
+          <PlusIcon /> {t("Add channel")}
+        </button>
+      </div>
+      <ChannelDialog
+        open={adding || !!editing}
+        channel={editing}
+        onClose={() => {
+          setAdding(false)
+          setEditing(null)
+        }}
+        onSaved={(c) => setChannels((l) => (l ?? []).some((x) => x.id === c.id) ? (l ?? []).map((x) => (x.id === c.id ? c : x)) : [...(l ?? []), c])}
+      />
       {confirmEl}
     </Section>
   )
@@ -509,6 +613,7 @@ export function SettingsView() {
         <AccountSection />
         <ModelSection />
         <AgentAccessSection />
+        <ChannelsSection />
         <PreferencesSection />
         <PasswordSection />
         {user.is_admin && <MembersSection />}
