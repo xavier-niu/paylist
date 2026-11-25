@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xavier-niu/paylist/internal/fx"
 	"github.com/xavier-niu/paylist/internal/store"
 )
 
@@ -25,6 +26,9 @@ type Options struct {
 	// as the MCP address. Worked out from each request when empty.
 	PublicURL string
 	Logger    *slog.Logger
+	// FX finds exchange rates, for an entry paid in another currency; a live
+	// one (fx.New) when nil.
+	FX *fx.Rates
 }
 
 type Server struct {
@@ -36,6 +40,9 @@ type Server struct {
 func New(opts Options) *Server {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
+	}
+	if opts.FX == nil {
+		opts.FX = fx.New()
 	}
 	return &Server{
 		opts:    opts,
@@ -62,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	mux.HandleFunc("POST /api/auth/setup", s.handleSetup)
 	mux.HandleFunc("GET /api/me", s.requireUser(s.handleMe))
+	mux.HandleFunc("GET /api/fx", s.requireUser(s.handleFX))
 	mux.HandleFunc("PUT /api/me/prefs", s.requireUser(s.handlePrefs))
 	mux.HandleFunc("PUT /api/me/password", s.requireUser(s.handleChangePassword))
 	mux.HandleFunc("PUT /api/me/model", s.requireUser(s.handleSaveModel))

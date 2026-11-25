@@ -18,6 +18,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/xavier-niu/paylist/internal/fx"
 	"github.com/xavier-niu/paylist/internal/store"
 )
 
@@ -38,7 +39,18 @@ func newEnv(t *testing.T) *env {
 	}
 	t.Cleanup(func() { st.Close() })
 	static := fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>Paylist</title>")}}
-	srv := httptest.NewServer(New(Options{Store: st, Static: static, AllowFake: true}).Handler())
+	// A stand-in for the exchange rate services, so tests stay off the network.
+	rates := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/f/2026-11-20" && r.URL.Query().Get("base") == "USD" {
+			w.Write([]byte(`{"date":"2026-11-20","rates":{"CNY":6.6777}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(rates.Close)
+	fxr := fx.New()
+	fxr.FrankfurterURL, fxr.OpenURL = rates.URL+"/f", rates.URL+"/o"
+	srv := httptest.NewServer(New(Options{Store: st, Static: static, AllowFake: true, FX: fxr}).Handler())
 	t.Cleanup(srv.Close)
 	return &env{srv, st}
 }
@@ -556,5 +568,29 @@ func TestLedgersAPI(t *testing.T) {
 	// The default falls back to the ledger that's left.
 	if got := decodeJSON[ledgers](t, e.do(t, a, "GET", "/api/ledgers", nil)); got.Current != personal {
 		t.Errorf("current after deleting: %+v", got)
+	}
+}
+
+func TestFX(t *testing.T) {
+	e := newEnv(t)
+	c := e.signIn(t, "fx@example.com")
+	r := decodeJSON[fx.Rate](t, e.do(t, c, "GET", "/api/fx?from=USD&to=CNY&date=2026-11-20", nil))
+	if r.Rate != 6.6777 || r.Date != "2026-11-20" || r.From != "USD" || r.To != "CNY" {
+		t.Fatalf("rate: %+v", r)
+	}
+	if same := decodeJSON[fx.Rate](t, e.do(t, c, "GET", "/api/fx?from=CNY&to=CNY", nil)); same.Rate != 1 {
+		t.Fatalf("same currency: %+v", same)
+	}
+	for path, want := range map[string]int{
+		"/api/fx?from=XYZ&to=CNY&date=2026-11-20": 404, // no source has it
+		"/api/fx?from=dollar&to=CNY":              400,
+		"/api/fx?from=USD&to=CNY&date=yesterday":  400,
+	} {
+		if code := status(t, e.do(t, c, "GET", path, nil)); code != want {
+			t.Errorf("%s: %d, want %d", path, code, want)
+		}
+	}
+	if code := status(t, e.do(t, &http.Client{}, "GET", "/api/fx?from=USD&to=CNY", nil)); code != 401 {
+		t.Errorf("signed out: %d", code)
 	}
 }
