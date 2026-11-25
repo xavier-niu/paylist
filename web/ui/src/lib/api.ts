@@ -309,6 +309,8 @@ export const api = {
   options: (ledger?: number) => request<Options>("GET", "/api/options", undefined, undefined, ledger),
   createOption: (kind: "type" | "card", name: string, color?: string, ledger?: number) => request<Option>("POST", "/api/options", { kind, name, color }, undefined, ledger),
   updateOption: (id: number, o: { name?: string; color?: string }, ledger?: number) => request<Option>("PUT", `/api/options/${id}`, o, undefined, ledger),
+  /** Puts the ledger's types (or cards) in this order; the options as they now are come back. */
+  reorderOptions: (kind: "type" | "card", ids: number[], ledger?: number) => request<Options>("PUT", "/api/options/order", { kind, ids }, undefined, ledger),
   deleteOption: (id: number, ledger?: number) => request<{ cleared: number }>("DELETE", `/api/options/${id}`, undefined, undefined, ledger),
 
   /** How much one `from` is worth in `to` on a day: to convert an amount paid in another currency. */

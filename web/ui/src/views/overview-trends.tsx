@@ -5,6 +5,7 @@ import { money, monthLabel, thisMonth, type Stats, type YearStats } from "@/lib/
 import { lang, t, tn } from "@/lib/i18n"
 import { Delta, Money } from "@/lib/money"
 import { INACTIVE_MONTHS } from "@/lib/options"
+import { useApp } from "@/lib/state"
 import { cn } from "@/lib/utils"
 
 // The overview's trends: each type against its usual month, the months one
@@ -37,10 +38,12 @@ type TypeRow = { name: string; color: string; now: number; usual: number; diff: 
 
 /**
  * Each type this month against its usual month (the average of the months
- * before, counted the same way), the furthest above it first: where the
- * spending grew, so where to look to spend less next month.
+ * before, counted the same way), in the ledger's order of types, with the
+ * furthest above it named at the top: where the spending grew, so where to
+ * look to spend less next month.
  */
 export function UsualCard({ stats, currency, onPickType }: { stats: Stats; currency: string; onPickType: (name: string, color: string) => void }) {
+  const { options } = useApp()
   const rows = useMemo<TypeRow[]>(() => {
     const out = new Map<string, TypeRow>()
     const spark = new Map(stats.type_monthly.map((s) => [s.name, s.totals]))
@@ -55,12 +58,20 @@ export function UsualCard({ stats, currency, onPickType }: { stats: Stats; curre
       .filter((r) => r.now !== 0 || r.usual !== 0)
       // An inactive type (nothing in the last twelve months, as the sparkline shows) is left out: nothing to cut there.
       .filter((r) => r.now !== 0 || r.spark.slice(-INACTIVE_MONTHS).some((v) => v !== 0))
-      .sort((a, b) => b.diff - a.diff || b.now - a.now)
   }, [stats])
+  // The types in the order set in Ledger settings; any not among them (no type, one since deleted) last.
+  const ordered = useMemo(() => {
+    const at = new Map(options.types.map((o, i) => [o.name, i]))
+    const pos = (r: TypeRow) => at.get(r.name) ?? (r.name ? options.types.length : options.types.length + 1)
+    return [...rows].sort((a, b) => pos(a) - pos(b) || b.now - a.now)
+  }, [rows, options.types])
   if (stats.avg_months === 0 || rows.length === 0) return null
   // Worth a look: well above the usual, by share and by amount.
   const floor = Math.max(1, stats.avg_to_date * 0.01)
-  const above = rows.filter((r) => r.diff >= floor && (r.usual === 0 || r.diff / r.usual >= 0.1)).slice(0, 3)
+  const above = rows
+    .filter((r) => r.diff >= floor && (r.usual === 0 || r.diff / r.usual >= 0.1))
+    .sort((a, b) => b.diff - a.diff)
+    .slice(0, 3)
   const usualTitle = stats.compare_day
     ? tn(stats.avg_months, "The month before, days 1–{d}", "The average of the {n} months before, days 1–{d} of each", { d: stats.compare_day })
     : tn(stats.avg_months, "The month before", "The average of the {n} months before")
@@ -98,7 +109,7 @@ export function UsualCard({ stats, currency, onPickType }: { stats: Stats; curre
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {ordered.map((r) => (
               <tr key={r.name} className="group cursor-pointer border-b border-rule last:border-b-0 hover:bg-wash" onClick={() => onPickType(r.name, r.color)} data-color={r.name ? r.color : "gray"}>
                 <td className="py-2 pr-3">
                   <span className="flex min-w-0 items-center gap-2">

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
-import { CheckIcon, Trash2Icon } from "lucide-react"
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
+import { CheckIcon, GripVerticalIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
@@ -48,7 +48,7 @@ function InactiveMark({ o }: { o: Option }) {
   )
 }
 
-function OptionRow({ o, ledgerID, colors, onChanged, onDelete, readOnly }: { o: Option; ledgerID: number; colors: string[]; onChanged: () => void; onDelete: () => void; readOnly: boolean }) {
+function OptionRow({ o, ledgerID, colors, onChanged, onDelete, readOnly, handle, dragging }: { o: Option; ledgerID: number; colors: string[]; onChanged: () => void; onDelete: () => void; readOnly: boolean; handle?: ReactNode; dragging?: boolean }) {
   const [name, setName] = useState(o.name)
   useEffect(() => setName(o.name), [o.name])
   const save = async (change: { name?: string; color?: string }) => {
@@ -78,7 +78,8 @@ function OptionRow({ o, ledgerID, colors, onChanged, onDelete, readOnly }: { o: 
     )
   }
   return (
-    <tr className="group border-b border-rule">
+    <tr data-id={o.id} className={cn("group border-b border-rule", dragging && "relative z-10 bg-sheet shadow-[0_6px_20px_rgb(0_0_0/.14)]")}>
+      <td className="w-6 py-1">{handle}</td>
       <td className="w-9 py-1">
         <Popover>
           <PopoverTrigger asChild>
@@ -138,24 +139,100 @@ function OptionList({ kind, title, list, ledger, onChanged }: { kind: "type" | "
     }
   }
   const changed = onChanged
+
+  // The order: dragged by a row's handle (mouse or touch), or moved a place
+  // with the arrow keys on it, then saved; shown as it changes, until the
+  // saved list comes back.
+  const [order, setOrder] = useState<Option[] | null>(null)
+  useEffect(() => setOrder(null), [list])
+  const rows = order ?? list
+  const bodyRef = useRef<HTMLTableSectionElement>(null)
+  const [dragId, setDragId] = useState<number | null>(null)
+  const saveOrder = (next: Option[]) => {
+    if (next.every((o, i) => o.id === list[i]?.id)) return setOrder(null)
+    setOrder(next)
+    api
+      .reorderOptions(kind, next.map((o) => o.id), ledger.id)
+      .then(onChanged)
+      .catch((e) => {
+        toast.error((e as Error).message)
+        setOrder(null)
+      })
+  }
+  const dragTo = (y: number) => {
+    if (dragId === null || !bodyRef.current) return
+    setOrder((cur) => {
+      const now = cur ?? list
+      const moving = now.find((o) => o.id === dragId)!
+      const rest = now.filter((o) => o.id !== dragId)
+      // The others' rows, in the order shown: the dragged one goes before the first whose middle is below the pointer.
+      const others = [...bodyRef.current!.querySelectorAll<HTMLTableRowElement>("tr[data-id]")].filter((r) => Number(r.dataset.id) !== dragId)
+      let at = others.findIndex((r) => {
+        const b = r.getBoundingClientRect()
+        return y < b.top + b.height / 2
+      })
+      if (at < 0) at = rest.length
+      return [...rest.slice(0, at), moving, ...rest.slice(at)]
+    })
+  }
+  const handle = (o: Option, i: number) => (
+    <button
+      type="button"
+      data-handle={o.id}
+      aria-label={t("Move {name}", { name: o.name })}
+      title={t("Drag to reorder")}
+      className="grid h-7 w-5 cursor-grab touch-none place-items-center rounded text-muted-foreground opacity-40 group-hover:opacity-100 hover:text-ink focus-visible:opacity-100 active:cursor-grabbing max-md:opacity-100"
+      onPointerDown={(e) => {
+        e.preventDefault()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        setDragId(o.id)
+        setOrder(rows)
+      }}
+      onPointerMove={(e) => dragId === o.id && dragTo(e.clientY)}
+      onPointerUp={() => {
+        if (dragId !== o.id) return
+        setDragId(null)
+        saveOrder(order ?? list)
+      }}
+      onPointerCancel={() => {
+        setDragId(null)
+        setOrder(null)
+      }}
+      onKeyDown={(e) => {
+        const by = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0
+        if (!by || i + by < 0 || i + by >= rows.length) return
+        e.preventDefault()
+        const next = [...rows]
+        ;[next[i], next[i + by]] = [next[i + by], next[i]]
+        saveOrder(next)
+        requestAnimationFrame(() => bodyRef.current?.querySelector<HTMLButtonElement>(`button[data-handle="${o.id}"]`)?.focus())
+      }}
+    >
+      <GripVerticalIcon className="size-3.5" />
+    </button>
+  )
+
   return (
     <div className="min-w-0">
       <table className="w-full">
         <thead>
           <tr className="border-b border-rule">
+            {canWrite && <th className="w-6" />}
             <th className="label py-1.5 text-left font-normal" colSpan={3}>{title}</th>
             <th className="label py-1.5 text-right font-normal">{t("Used")}</th>
             <th />
           </tr>
         </thead>
-        <tbody>
-          {list.map((o) => (
+        <tbody ref={bodyRef}>
+          {rows.map((o, i) => (
             <OptionRow
               key={o.id}
               o={o}
               ledgerID={ledger.id}
               colors={config.colors}
               readOnly={!canWrite}
+              handle={canWrite ? handle(o, i) : undefined}
+              dragging={dragId === o.id}
               onChanged={changed}
               onDelete={() =>
                 ask({

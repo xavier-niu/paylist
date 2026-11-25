@@ -138,6 +138,8 @@ export const ZH: Record<string, string> = {
   "last used {when}": "上次使用 {when}",
   "Last used {when}": "上次使用：{when}",
   "Inactive": "不活跃",
+  "Move {name}": "移动 {name}",
+  "Drag to reorder": "拖动以调整顺序",
   "The agent made no progress for 5 minutes, so the turn was closed.": "助手 5 分钟没有进展，已结束这一轮。",
 
   // Trends: against the usual, month by month, the year
