@@ -6,7 +6,7 @@ import { EntryHistory } from "@/components/entry-history"
 import { ChoiceSelect, OptionSelect, Tag } from "@/components/option-select"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
-import { api, currencySymbol, dateLabel, money, monthLabel, today, type Entry, type FxRate, type Suggestion } from "@/lib/api"
+import { api, currencySymbol, dateLabel, money, today, type Entry, type FxRate, type Suggestion } from "@/lib/api"
 import { CURRENCIES } from "@/lib/currencies"
 import { lastCard, rememberCard } from "@/lib/options"
 import { Original } from "@/lib/money"
@@ -40,10 +40,13 @@ export function EntryDialog({
   entry,
   refund = false,
   of,
+  onSaved,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
   entry?: Entry | null
+  /** Changing an entry: called with it as saved, or null when it was deleted. */
+  onSaved?: (e: Entry | null) => void
   refund?: boolean
   /** A refund of this purchase: the form starts from it, with it picked. */
   of?: Entry | null
@@ -67,7 +70,7 @@ export function EntryDialog({
   useEffect(() => {
     if (!open) return
     const down = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Enter" || e.isComposing) return
+      if (e.key !== "Enter" || e.isComposing || editingRef.current) return
       if (e.shiftKey) {
         e.preventDefault()
         e.stopPropagation()
@@ -89,8 +92,13 @@ export function EntryDialog({
     }
   }, [open])
   const nameRef = useRef<HTMLInputElement>(null)
-  // What was just added, while the form stays open for the next one.
-  const [added, setAdded] = useState<{ name: string; month: string; n: number } | null>(null)
+  // What was added since the form opened, newest first, while it stays open
+  // for the next one; and the one of them being changed, in a form of its own.
+  // A deleted one stays, struck through, to be brought back.
+  const [added, setAdded] = useState<(Entry & { deleted?: boolean })[]>([])
+  const [editing, setEditing] = useState<Entry | null>(null)
+  const editingRef = useRef(false)
+  editingRef.current = !!editing
   // Names used before, loaded when the form opens; those matching what's typed (by pinyin too) are offered, and picking one fills in the rest.
   const [known, setKnown] = useState<Suggestion[]>([])
   const [suggesting, setSuggesting] = useState(false) // the list is wanted: typing in the name
@@ -105,7 +113,8 @@ export function EntryDialog({
   useEffect(() => {
     if (!open) return
     setConfirmDelete(false)
-    setAdded(null)
+    setAdded([])
+    setEditing(null)
     setSuggesting(false)
     setFound(null)
     setCur(ledger.currency)
@@ -332,9 +341,10 @@ export function EntryDialog({
       void reloadOptions()
       if (entry) {
         toast.success(t("Saved {name}.", { name: saved.name }))
+        onSaved?.(saved)
         onOpenChange(false)
       } else {
-        setAdded((a) => ({ name: saved.name, month: monthLabel(saved.date.slice(0, 7)), n: (a?.n ?? 0) + 1 }))
+        setAdded((a) => [saved, ...a])
         setName("")
         setAmount("")
         setType("")
@@ -360,11 +370,34 @@ export function EntryDialog({
       toast.success(t("Deleted {name}.", { name: entry.name }))
       bumpTable()
       void reloadOptions()
+      onSaved?.(null)
       onOpenChange(false)
     } catch (err) {
       toast.error((err as Error).message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Deletes one of the entries just added, at once; it stays in the list,
+  // struck through, with a way back (here rather than in a toast, which is
+  // outside the form: clicking it would close the form).
+  const removeAdded = async (e: Entry) => {
+    try {
+      await api.deleteEntries([e.id])
+      setAdded((a) => a.map((x) => (x.id === e.id ? { ...x, deleted: true } : x)))
+      bumpTable()
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+  const restoreAdded = async (e: Entry) => {
+    try {
+      const back = await api.createEntry({ name: e.name, amount: e.amount, type: e.type, card: e.card, date: e.date, ...(e.orig_currency ? { orig_amount: e.orig_amount, orig_currency: e.orig_currency } : {}) })
+      setAdded((a) => a.map((x) => (x.id === e.id ? back : x)))
+      bumpTable()
+    } catch (err) {
+      toast.error((err as Error).message)
     }
   }
 
@@ -607,26 +640,60 @@ export function EntryDialog({
               <button type="button" className="btn ghost !text-red" onClick={remove} disabled={busy}>
                 <Trash2Icon /> {confirmDelete ? t("Click again to delete") : t("Delete")}
               </button>
-            ) : (
-              added && (
-                <span className="flex min-w-0 items-center gap-1.5 px-2 text-[12.5px] text-ink-2" role="status">
-                  <CheckIcon className="size-3.5 shrink-0 text-good" />
-                  <span className="truncate">
-                    {added.n > 1 ? t("Added {name} · {n} so far", { name: added.name, n: added.n }) : t("Added {name} to {month}.", { name: added.name, month: added.month })}
-                  </span>
-                </span>
-              )
-            )}
+            ) : null}
             <span className="flex-1" />
             <button type="button" className="btn ghost" onClick={() => onOpenChange(false)}>
-              {entry || !added ? t("Cancel") : t("Done")}
+              {entry || !added.some((e) => !e.deleted) ? t("Cancel") : t("Done")}
             </button>
             <button type="submit" title="Shift+Enter" className={cn("btn", refund && picked && !partial && !locked && "danger")} disabled={!ready || busy || (refund && !matchesReady)}>
               {busy && <Spinner className="size-3.5" />}
               {refund ? (picked ? (partial ? t("Refund part") : locked ? t("Refund") : t("Delete purchase")) : t("Add refund")) : entry ? t("Save") : t("Add")}
             </button>
           </div>
+          {!entry && added.length > 0 && (
+            // What was added since the form opened, to change or take back at once.
+            <div className="border-t border-rule px-5 pt-2.5 pb-3">
+              <div className="flex items-center gap-1.5 px-2 pb-1 text-[12px] text-ink-2" role="status">
+                <CheckIcon className="size-3.5 text-good" /> {t("Added")} · {added.filter((e) => !e.deleted).length}
+              </div>
+              <ul className="max-h-[188px] overflow-y-auto">
+                {added.map((e) => (
+                  <li key={e.id} className={cn("flex h-9 items-center gap-2.5 rounded-[8px] px-2 text-[13.5px] hover:bg-wash", e.deleted && "text-muted-foreground line-through decoration-1")}>
+                    <span className="min-w-0 flex-1 truncate font-medium">{e.name}</span>
+                    {e.type && <Tag name={e.type} color={optionColor(options, "type", e.type)} className="!shadow-none !bg-transparent !px-0 text-[12.5px] text-ink-2 max-sm:hidden" />}
+                    <span className="text-[12.5px] text-ink-2 tabular-nums">{dateLabel(e.date, { month: "short", day: "numeric" })}</span>
+                    <span className={cn("w-24 text-right tabular-nums", e.amount < 0 && "text-red")}>{money(e.amount, ledger.currency)}</span>
+                    {e.deleted ? (
+                      <button type="button" className="flex h-7 w-[60px] shrink-0 items-center justify-center gap-1 rounded-md text-[12.5px] text-ink no-underline hover:bg-sheet" style={{ textDecoration: "none" }} aria-label={t("Undo deleting {name}", { name: e.name })} onClick={() => void restoreAdded(e)}>
+                        <Undo2Icon className="size-3.5" /> {t("Undo")}
+                      </button>
+                    ) : (
+                      <>
+                        <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-sheet hover:text-ink" aria-label={t("Edit {name}", { name: e.name })} title={t("Edit")} onClick={() => setEditing(e)}>
+                          <PencilIcon className="size-3.5" />
+                        </button>
+                        <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-sheet hover:text-red" aria-label={t("Delete {name}", { name: e.name })} title={t("Delete")} onClick={() => void removeAdded(e)}>
+                          <Trash2Icon className="size-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </form>
+        {!entry && !refund && (
+          <EntryDialog
+            open={!!editing}
+            entry={editing}
+            onOpenChange={(o) => !o && setEditing(null)}
+            onSaved={(saved) => {
+              const was = editing
+              setAdded((a) => (saved ? a.map((x) => (x.id === saved.id ? saved : x)) : a.filter((x) => x.id !== was?.id)))
+            }}
+          />
+        )}
       </DialogContent>
     </Dialog>
   )
