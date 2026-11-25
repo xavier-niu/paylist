@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
-import { CalendarIcon, CheckIcon, ChevronDownCircleIcon, HashIcon, Trash2Icon, Undo2Icon } from "lucide-react"
+import { CalendarIcon, CheckIcon, ChevronDownCircleIcon, CoinsIcon, HashIcon, Trash2Icon, Undo2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { OptionSelect, Tag } from "@/components/option-select"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
-import { api, currencySymbol, dateLabel, money, monthLabel, today, type Entry, type Suggestion } from "@/lib/api"
+import { api, currencySymbol, dateLabel, money, monthLabel, today, type Entry, type FxRate, type Suggestion } from "@/lib/api"
+import { CURRENCIES } from "@/lib/currencies"
 import { optionColor, useApp } from "@/lib/state"
 import { matchAt } from "@/lib/search"
 import { cn } from "@/lib/utils"
@@ -47,6 +48,9 @@ export function EntryDialog({
   const [type, setType] = useState("")
   const [card, setCard] = useState("")
   const [date, setDate] = useState(today())
+  // The currency the amount is typed in: the ledger's, or another, converted at the date's rate when saved (only the ledger's amount is kept).
+  const [cur, setCur] = useState(ledger.currency)
+  const [rate, setRate] = useState<{ key: string; rate?: FxRate; error?: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const amountRef = useRef<HTMLInputElement>(null)
@@ -67,6 +71,7 @@ export function EntryDialog({
     setAdded(null)
     setSuggesting(false)
     setFound(null)
+    setCur(ledger.currency)
     if (entry) {
       setName(entry.name)
       setAmount(entry.amount.toFixed(2))
@@ -80,6 +85,7 @@ export function EntryDialog({
       setCard("")
       setDate(today())
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, entry])
 
   useEffect(() => {
@@ -111,6 +117,8 @@ export function EntryDialog({
     setType(sg.type)
     if (sg.card) setCard(sg.card)
     setAmount(sg.amount.toFixed(2))
+    // That amount is in the ledger's currency.
+    setCur(ledger.currency)
     setSuggesting(false)
     requestAnimationFrame(() => {
       amountRef.current?.focus()
@@ -140,7 +148,24 @@ export function EntryDialog({
     }
   }
 
-  const n = parseAmount(amount)
+  const typed = parseAmount(amount)
+  // Another currency: its rate for the date, and the amount in the ledger's currency, to the cent.
+  const foreign = !entry && cur !== ledger.currency
+  const rateKey = `${cur}|${ledger.currency}|${date}`
+  useEffect(() => {
+    if (!open || !foreign || !date) return
+    let live = true
+    api
+      .fx(cur, ledger.currency, date)
+      .then((r) => live && setRate({ key: rateKey, rate: r }))
+      .catch((e) => live && setRate({ key: rateKey, error: (e as Error).message }))
+    return () => {
+      live = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, foreign, rateKey])
+  const fx = foreign && rate?.key === rateKey ? rate : null
+  const n = !foreign ? typed : fx?.rate && Number.isFinite(typed) ? Math.round(typed * fx.rate.rate * 100) / 100 : NaN
   // A refund needs everything: the name and amount to match, the rest to record it if nothing does.
   const ready = refund
     ? name.trim() !== "" && Number.isFinite(n) && n !== 0 && type !== "" && card !== "" && date !== ""
@@ -332,7 +357,7 @@ export function EntryDialog({
             <div className={row}>
               <span className={name_}><HashIcon /> {t("Amount")}</span>
               <span className="flex items-center gap-1.5 rounded-[8px] px-2 hover:bg-wash focus-within:bg-wash">
-                <span className="text-muted-foreground">{currencySymbol(ledger.currency)}</span>
+                <span className="text-muted-foreground">{currencySymbol(foreign ? cur : ledger.currency)}</span>
                 <input
                   ref={amountRef}
                   id="entry-amount"
@@ -341,10 +366,29 @@ export function EntryDialog({
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
                   aria-label={t("Amount")}
-                  className={cn("h-[34px] w-full min-w-0 bg-transparent text-[14px] tabular-nums outline-none placeholder:text-muted-foreground", n < 0 && !refund && "text-red")}
+                  className={cn("h-[34px] w-full min-w-0 bg-transparent text-[14px] tabular-nums outline-none placeholder:text-muted-foreground", typed < 0 && !refund && "text-red")}
                 />
               </span>
             </div>
+            {foreign && (
+              // What it comes to in the ledger's currency, which is what's saved.
+              <div className={row}>
+                <span />
+                <span className="-mt-1 px-2 text-[12.5px] text-ink-2 tabular-nums" role="status" id="entry-converted">
+                  {!fx ? (
+                    t("Getting the rate…")
+                  ) : fx.error ? (
+                    <span className="text-red">{fx.error}</span>
+                  ) : (
+                    <>
+                      {Number.isFinite(n) && amount.trim() !== "" && <span className="font-medium text-ink">≈ {money(n, ledger.currency)} · </span>}
+                      {t("1 {from} = {rate} {to}", { from: cur, rate: String(+fx.rate!.rate.toPrecision(6)), to: ledger.currency })}
+                      {fx.rate!.date !== date && <> · {dateLabel(fx.rate!.date, { month: "short", day: "numeric" })}</>}
+                    </>
+                  )}
+                </span>
+              </div>
+            )}
             <div className={row}>
               <span className={name_}><ChevronDownCircleIcon /> {t("Type")}</span>
               <OptionSelect kind="type" label={t("Type")} placeholder={t("Empty")} value={type} options={options.types} onChange={setType} className="rounded-md hover:bg-wash" />
@@ -364,6 +408,24 @@ export function EntryDialog({
                 )}
               </span>
             </div>
+            {!entry && (
+              // Paid in another currency: typed in it, saved in the ledger's.
+              <div className={row}>
+                <span className={name_}><CoinsIcon /> {t("Currency")}</span>
+                <select
+                  id="entry-currency"
+                  value={cur}
+                  onChange={(e) => setCur(e.target.value)}
+                  aria-label={t("Currency")}
+                  className="h-[34px] w-fit cursor-pointer appearance-none rounded-md bg-transparent px-2 text-[14px] outline-none hover:bg-wash focus:bg-wash"
+                >
+                  <option value={ledger.currency}>{ledger.currency}</option>
+                  {CURRENCIES.filter((c) => c !== ledger.currency).map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             {refund && matches.length > 0 && (
               <ul role="listbox" aria-label={t("Matching purchases")} className="mt-3 grid gap-0.5">
                 {matches.map((m, i) => (

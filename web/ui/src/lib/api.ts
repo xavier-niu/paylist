@@ -18,6 +18,15 @@ export interface Ledger {
   created_at: string
 }
 
+export interface FxRate {
+  from: string
+  to: string
+  rate: number
+  /** The day the rate was published. */
+  date: string
+  source: string
+}
+
 export interface LedgerMember {
   user_id: number
   email: string
@@ -275,6 +284,8 @@ export const api = {
   updateOption: (id: number, o: { name?: string; color?: string }, ledger?: number) => request<Option>("PUT", `/api/options/${id}`, o, undefined, ledger),
   deleteOption: (id: number, ledger?: number) => request<{ cleared: number }>("DELETE", `/api/options/${id}`, undefined, undefined, ledger),
 
+  /** How much one `from` is worth in `to` on a day: to convert an amount paid in another currency. */
+  fx: (from: string, to: string, date: string) => request<FxRate>("GET", "/api/fx" + q({ from, to, date })),
   stats: (month: string, months = 12) => request<Stats>("GET", "/api/stats" + q({ month, months, today: today() })),
   /** Every month with entries up to this one, newest first. */
   months: () => request<MonthTotal[]>("GET", "/api/months" + q({ upto: thisMonth() })),

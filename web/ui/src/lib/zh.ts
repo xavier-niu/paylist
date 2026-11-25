@@ -131,6 +131,13 @@ export const ZH: Record<string, string> = {
   "Saved {name}.": "已保存“{name}”。",
   "Deleted {name}.": "已删除“{name}”。",
 
+  // Paying in another currency
+  "Getting the rate…": "正在获取汇率…",
+  "1 {from} = {rate} {to}": "1 {from} = {rate} {to}",
+  "No exchange rate is published for this currency.": "这种货币没有公布的汇率。",
+  "Couldn't get the exchange rate. Try again.": "获取汇率失败，请重试。",
+  "A currency is a three-letter code, such as USD.": "货币需用三个字母的代码，例如 USD。",
+
   // Ledgers and sharing
   "Ledgers and account": "账本和账户",
   "Ledgers": "账本",
