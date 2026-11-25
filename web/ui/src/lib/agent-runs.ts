@@ -80,3 +80,26 @@ export function useAgentWorking(): boolean {
 export function isRunning(id: string): boolean {
   return running.has(id)
 }
+
+// The conversation last open on the agent page, so coming back to the page
+// (from the sidebar) shows it again. Kept in memory only: a reload, a closed
+// browser or signing out starts afresh.
+let lastChat = ""
+const lastListeners = new Set<() => void>()
+
+export function setLastChat(id: string) {
+  if (id === lastChat) return
+  lastChat = id
+  lastListeners.forEach((l) => l())
+}
+
+/** The conversation to go back to on the agent page ("" for a new one). */
+export function useLastChat(): string {
+  return useSyncExternalStore(
+    (l) => {
+      lastListeners.add(l)
+      return () => lastListeners.delete(l)
+    },
+    () => lastChat,
+  )
+}

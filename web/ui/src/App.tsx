@@ -20,7 +20,7 @@ import { api, money, monthLabel, plainAmount, setCurrentLedger, setSignedOutHand
 import { AppContext, applyTheme, type AppState } from "@/lib/state"
 import { loadPinyin } from "@/lib/search"
 import * as agentRuns from "@/lib/agent-runs"
-import { useAgentWorking } from "@/lib/agent-runs"
+import { useAgentWorking, useLastChat } from "@/lib/agent-runs"
 import { cn } from "@/lib/utils"
 import { AgentView } from "@/views/agent-view"
 import { LoginView } from "@/views/login-view"
@@ -41,6 +41,11 @@ const NAV: { route: Route; label: () => string; icon: LucideIcon }[] = [
   { route: "ledger", label: () => t("Ledger"), icon: NotebookTextIcon },
   { route: "agent", label: () => t("Agent"), icon: BotIcon },
 ]
+
+// A fresh page load (a reload, a new tab, the browser reopened) starts the
+// agent on a new conversation: an address naming one opens the page empty.
+// Within the app, the agent page goes back to the one last open (lib/agent-runs).
+if (/^#\/agent\/./.test(location.hash)) history.replaceState(null, "", "#/agent")
 
 function readRoute(): { route: Route; arg: string; arg2: string } {
   const [, route = "", arg = "", arg2 = ""] = location.hash.split("/")
@@ -135,7 +140,10 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    setSignedOutHandler(() => setSession(null))
+    setSignedOutHandler(() => {
+      agentRuns.setLastChat("")
+      setSession(null)
+    })
     void boot()
   }, [boot])
 
@@ -189,6 +197,7 @@ export function App() {
   // note says so, with the way back to it. Turns already underway (started
   // before a reload, or elsewhere) are found when signing in.
   const agentWorking = useAgentWorking()
+  const lastChat = useLastChat()
   useEffect(() => {
     if (!signedIn) return
     agentRuns.onFinished((id, title, seen) => {
@@ -282,6 +291,7 @@ export function App() {
 
   const signOut = async () => {
     await api.logout().catch(() => {})
+    agentRuns.setLastChat("")
     setSession(null)
     location.hash = ""
   }
@@ -338,7 +348,7 @@ export function App() {
 
       <nav className="mt-3 grid gap-0.5" aria-label={t("Pages")}>
         {NAV.map(({ route, label, icon: Icon }) => (
-          <a key={route} href={`#/${route}`} onClick={go} className="side-item" aria-current={loc.route === route ? "page" : undefined}>
+          <a key={route} href={route === "agent" && lastChat ? `#/agent/${lastChat}` : `#/${route}`} onClick={go} className="side-item" aria-current={loc.route === route ? "page" : undefined}>
             <Icon /> {label()}
             {route === "agent" && agentWorking && <Spinner className="ml-auto size-3.5 text-ink-2" aria-label={t("The agent is working")} />}
           </a>

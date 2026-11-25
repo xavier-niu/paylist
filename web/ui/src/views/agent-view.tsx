@@ -154,6 +154,7 @@ export function AgentView({ chatId }: { chatId: string }) {
           history.replaceState(null, "", `#/agent/${ev.id}`)
         }
         runs.setViewing(ev.id)
+        runs.setLastChat(ev.id)
         runs.started(ev.id, ev.title)
         loadChats()
         break
@@ -210,6 +211,7 @@ export function AgentView({ chatId }: { chatId: string }) {
   // Open the conversation in the address (or a new one): if a turn is underway in it, follow it from its start.
   useEffect(() => {
     runs.setViewing(chatId)
+    runs.setLastChat(chatId)
     if (chatId === currentRef.current && (items.length > 0 || !chatId)) return
     currentRef.current = chatId
     abortRef.current?.abort()
@@ -231,6 +233,7 @@ export function AgentView({ chatId }: { chatId: string }) {
       })
       .catch((e) => {
         toast.error((e as Error).message)
+        runs.setLastChat("")
         location.hash = "#/agent"
       })
       .finally(() => setLoading(false))
@@ -334,6 +337,7 @@ export function AgentView({ chatId }: { chatId: string }) {
     setRunning(false)
     currentRef.current = ""
     runs.setViewing("")
+    runs.setLastChat("")
     setItems([])
     location.hash = "#/agent"
     inputRef.current?.focus()
