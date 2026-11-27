@@ -91,7 +91,9 @@
   --viz-grid: #ececec;
   --viz-axis: #d9d9d9;
   --viz-text: #8d8d8d;
-  --seq-0: #ebedf0; --seq-1: #9be9a8; --seq-2: #6fd385; --seq-3: #40c463; --seq-4: #30a14e; --seq-5: #216e39; --seq-6: #174d28; --seq-text: #ffffff;
+  --seq-0: #ebedf0; --seq-1: #9be9a8; --seq-2: #6fd385; --seq-3: #40c463; --seq-4: #30a14e; --seq-5: #216e39; --seq-6: #174d28;
+  /* A cell's figures: ink on the pale steps (1–3), white on the deep ones (4–5). */
+  --seq-ink: var(--ink); --seq-text: #ffffff;
   /* The same steps in red, for days that net below zero (more came back than went out). */
   --neg-1: #ffcdcb; --neg-2: #ffa9a5; --neg-3: #f57670; --neg-4: #d9443e; --neg-5: #a8231f;
 
@@ -141,8 +143,10 @@
   --viz-grid: #222222;
   --viz-axis: #3a3a3a;
   --viz-text: #7b7b7b;
-  --seq-0: #232323; --seq-1: #0e4429; --seq-2: #00592b; --seq-3: #006d32; --seq-4: #26a641; --seq-5: #39d353; --seq-6: #6ee787; --seq-text: #0d1117;
-  --neg-1: #4a1519; --neg-2: #6e1d22; --neg-3: #9c2a2e; --neg-4: #e0504b; --neg-5: #ff8580;
+  /* Darker is more here too, as in the light theme: from a bright green down to a deep one. */
+  --seq-0: #232323; --seq-1: #7ee09a; --seq-2: #4fcf6f; --seq-3: #2fae52; --seq-4: #1f8a3e; --seq-5: #146b30; --seq-6: #0d4d22;
+  --seq-ink: #0d1117; --seq-text: #ffffff;
+  --neg-1: #ff9d98; --neg-2: #f57670; --neg-3: #e0504b; --neg-4: #b8302b; --neg-5: #8a1f1c;
 
   --opt-gray: #7b7b7b; --opt-brown: #ad7f58; --opt-orange: #ff801f; --opt-yellow: #ffca16; --opt-green: #33b074;
   --opt-blue: #3b9eff; --opt-purple: #9a5cd0; --opt-pink: #de51a8; --opt-red: #ec5d5e;

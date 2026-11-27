@@ -396,8 +396,8 @@ export function CalendarHeat({
               aria-pressed={onPick ? d.date === picked : undefined}
               style={
                 n > 0
-                  ? { background: `var(--neg-${n})`, color: n >= 4 ? "var(--seq-text)" : "var(--ink)" }
-                  : { background: `var(--seq-${s})`, color: s >= 4 ? "var(--seq-text)" : s > 0 ? "var(--ink)" : "var(--muted-foreground)" }
+                  ? { background: `var(--neg-${n})`, color: n >= 4 ? "var(--seq-text)" : "var(--seq-ink)" }
+                  : { background: `var(--seq-${s})`, color: s >= 4 ? "var(--seq-text)" : s > 0 ? "var(--seq-ink)" : "var(--muted-foreground)" }
               }
             >
               <span className="text-[10.5px] leading-none opacity-70">{Number(d.date.slice(8))}</span>
