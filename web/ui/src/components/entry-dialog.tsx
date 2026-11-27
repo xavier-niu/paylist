@@ -410,6 +410,12 @@ export function EntryDialog({
   // Labels on one line.
   const row = "grid grid-cols-[120px_minmax(0,1fr)] items-center gap-2 min-h-[34px]"
   const name_ = "flex items-center gap-1.5 whitespace-nowrap text-[14px] text-muted-foreground [&_svg]:size-4 [&_svg]:shrink-0"
+  // A field: grey under the pointer, ringed in blue where the typing goes (or whose list is open,
+  // the focus being in the list then); never both looks at once.
+  const box =
+    "rounded-[8px] bg-transparent outline-none [&:not(:focus-within,[data-state=open])]:hover:bg-wash " +
+    "focus-within:bg-sheet focus-within:shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--blue)_55%,transparent)] " +
+    "data-[state=open]:bg-sheet data-[state=open]:shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--blue)_55%,transparent)]"
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -437,7 +443,7 @@ export function EntryDialog({
           <div className="grid gap-0.5 px-7 pt-2 pb-6">
             <div className={cn(row, "relative")}>
               <span className={name_}><TypeIcon /> {t("Name")}</span>
-              <span className="flex items-center rounded-[8px] px-2 hover:bg-wash focus-within:bg-wash">
+              <span className={cn("flex items-center px-2", box)}>
                 <input
                   ref={nameRef}
                   id="entry-name"
@@ -497,7 +503,7 @@ export function EntryDialog({
             </div>
             <div className={row}>
               <span className={name_}>{refund ? <Undo2Icon /> : <HashIcon />} {refund ? t("Refund") : t("Amount")}</span>
-              <span className="flex items-center gap-1.5 rounded-[8px] px-2 hover:bg-wash focus-within:bg-wash">
+              <span className={cn("flex items-center gap-1.5 px-2", box)}>
                 <span className="text-muted-foreground">{currencySymbol(foreign ? cur : ledger.currency)}</span>
                 <input
                   ref={amountRef}
@@ -555,16 +561,16 @@ export function EntryDialog({
               <>
             <div className={row}>
               <span className={name_}><ChevronDownCircleIcon /> {t("Type")}</span>
-              <OptionSelect kind="type" label={t("Type")} placeholder={t("Empty")} value={type} options={options.types} onChange={setType} className="rounded-md hover:bg-wash" />
+              <OptionSelect kind="type" label={t("Type")} placeholder={t("Empty")} value={type} options={options.types} onChange={setType} className={box} />
             </div>
             <div className={row}>
               <span className={name_}><ChevronDownCircleIcon /> {t("Card")}</span>
-              <OptionSelect kind="card" label={t("Card")} placeholder={t("Empty")} value={card} options={options.cards} onChange={setCard} className="rounded-md hover:bg-wash" />
+              <OptionSelect kind="card" label={t("Card")} placeholder={t("Empty")} value={card} options={options.cards} onChange={setCard} className={box} />
             </div>
             <div className={row}>
               <span className={name_}><CalendarIcon /> {t("Date")}</span>
               <span className="flex items-center gap-2">
-                <DatePicker value={date} onChange={setDate} label={t("Date")} className="h-[34px] rounded-md bg-transparent px-2 text-[14px] outline-none hover:bg-wash focus:bg-wash" />
+                <DatePicker value={date} onChange={setDate} label={t("Date")} className={cn("h-[34px] px-2 text-[14px]", box)} />
                 {date !== today() && (
                   <button type="button" className="pill soft !h-7 !px-3 text-[13px]" onClick={() => setDate(today())}>
                     {t("Today")}
@@ -584,7 +590,7 @@ export function EntryDialog({
                   choices={[ledger.currency, ...CURRENCIES.filter((c) => c !== ledger.currency)]}
                   onChange={setCur}
                   label={t("Currency")}
-                  className="h-[34px] w-fit cursor-pointer rounded-md bg-transparent px-2 text-left text-[14px] outline-none hover:bg-wash focus:bg-wash"
+                  className={cn("h-[34px] w-fit cursor-pointer px-2 text-left text-[14px]", box)}
                 />
               </div>
             )}
