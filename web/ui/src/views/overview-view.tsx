@@ -154,8 +154,7 @@ export function OverviewView() {
               </div>
             </div>
             <div className="mx-auto w-full max-w-[460px] min-w-0 @min-[720px]:mx-0 @min-[720px]:max-w-none @min-[720px]:border-l @min-[720px]:border-rule @min-[720px]:pl-8">
-              <h2 className="card-title mb-3">{t("Day by day")}</h2>
-              <CalendarHeat days={stats.days} format={fmt} onPick={toggleDay} picked={pick?.kind === "day" ? pick.key : null} />
+              <CalendarHeat title={t("Day by day")} days={stats.days} format={fmt} onPick={toggleDay} picked={pick?.kind === "day" ? pick.key : null} />
             </div>
             </div>
 

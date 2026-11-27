@@ -346,13 +346,20 @@ function weekdays(): string[] {
   })
 }
 
-/** Daily spending as a month calendar: green, darker is more, each day's amount under its date; a day that nets below zero in red. */
+/**
+ * Daily spending as a month calendar under its title and color key: green,
+ * darker is more, each day's amount under its date; a day that nets below
+ * zero in red. The line below it reads out a day: the one pointed at, else
+ * the one picked, else today.
+ */
 export function CalendarHeat({
+  title,
   days,
   format,
   onPick,
   picked = null,
 }: {
+  title: ReactNode
   days: { date: string; total: number; count: number }[]
   format: (v: number) => string
   onPick?: (date: string) => void
@@ -372,10 +379,19 @@ export function CalendarHeat({
   const backCuts = [0.2, 0.4, 0.6, 0.8].map((q) => back[Math.floor(q * (back.length - 1))] ?? 0)
   const negStep = (v: number) => (v >= 0 ? 0 : 1 + backCuts.filter((c) => -v > c).length)
   const todayStr = new Date().toDateString()
-  const h = days.find((d) => d.date === hover)
+  const h = days.find((d) => d.date === hover) ?? days.find((d) => d.date === picked) ?? days.find((d) => new Date(d.date + "T00:00").toDateString() === todayStr)
   return (
     <div>
-      <div className="grid grid-cols-7 gap-[3px] text-center text-[11px] text-muted-foreground">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <h2 className="card-title">{title}</h2>
+        <span className="flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground">
+          {t("Less")}
+          {[0, 1, 2, 3, 4, 5].map((s) => <span key={s} className="size-2.5 rounded-[2px]" style={{ background: `var(--seq-${s})` }} />)}
+          {t("More")}
+        </span>
+      </div>
+      {/* Left as a whole, not cell by cell, so the line below doesn't flicker back to today in the gaps. */}
+      <div className="grid grid-cols-7 gap-[3px] text-center text-[11px] text-muted-foreground" onMouseLeave={() => setHover(null)}>
         {weekdays().map((d) => <div key={d} className="label pb-1 !text-[11px] !font-normal">{d}</div>)}
         {Array.from({ length: lead }, (_, i) => <div key={"l" + i} />)}
         {days.map((d) => {
@@ -387,7 +403,6 @@ export function CalendarHeat({
               key={d.date}
               type="button"
               onMouseEnter={() => setHover(d.date)}
-              onMouseLeave={() => setHover(null)}
               onFocus={() => setHover(d.date)}
               onBlur={() => setHover(null)}
               onClick={() => onPick?.(d.date)}
@@ -406,19 +421,12 @@ export function CalendarHeat({
           )
         })}
       </div>
-      <div className="mt-3 flex items-center justify-between gap-2 text-[12px] text-muted-foreground">
-        <span className="min-h-[18px] truncate">
-          {h && (
-            <>
-              <span className={cn("figure font-semibold text-foreground", h.total < 0 && "text-red")}>{format(h.total)}</span> · {dateLabel(h.date, { weekday: "short", month: "short", day: "numeric" })} · {tn(h.count, "{n} entry", "{n} entries")}
-            </>
-          )}
-        </span>
-        <span className="flex shrink-0 items-center gap-1">
-          {t("Less")}
-          {[0, 1, 2, 3, 4, 5].map((s) => <span key={s} className="size-2.5 rounded-[2px]" style={{ background: `var(--seq-${s})` }} />)}
-          {t("More")}
-        </span>
+      <div className="mt-3 min-h-[18px] text-[12px] text-muted-foreground">
+        {h && (
+          <>
+            <span className={cn("figure font-semibold text-foreground", h.total < 0 && "text-red")}>{format(h.total)}</span> · {dateLabel(h.date, { weekday: "short", month: "short", day: "numeric" })} · {tn(h.count, "{n} entry", "{n} entries")}
+          </>
+        )}
       </div>
     </div>
   )
