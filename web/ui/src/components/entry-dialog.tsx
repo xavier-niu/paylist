@@ -94,8 +94,10 @@ export function EntryDialog({
   const nameRef = useRef<HTMLInputElement>(null)
   // What was added since the form opened, newest first, while it stays open
   // for the next one; and the one of them being changed, in a form of its own.
-  // A deleted one stays, struck through, to be brought back.
-  const [added, setAdded] = useState<(Entry & { deleted?: boolean })[]>([])
+  // A deleted one stays, struck through, to be brought back. Each keeps the
+  // key it came with (brought back, it's a new entry), so its row stays put;
+  // one deleted in its own form closes up (leaving) and goes.
+  const [added, setAdded] = useState<(Entry & { key: number; deleted?: boolean; leaving?: boolean })[]>([])
   const [editing, setEditing] = useState<Entry | null>(null)
   const editingRef = useRef(false)
   editingRef.current = !!editing
@@ -344,7 +346,7 @@ export function EntryDialog({
         onSaved?.(saved)
         onOpenChange(false)
       } else {
-        setAdded((a) => [saved, ...a])
+        setAdded((a) => [{ ...saved, key: saved.id }, ...a])
         setName("")
         setAmount("")
         setType("")
@@ -394,7 +396,7 @@ export function EntryDialog({
   const restoreAdded = async (e: Entry) => {
     try {
       const back = await api.createEntry({ name: e.name, amount: e.amount, type: e.type, card: e.card, date: e.date, ...(e.orig_currency ? { orig_amount: e.orig_amount, orig_currency: e.orig_currency } : {}) })
-      setAdded((a) => a.map((x) => (x.id === e.id ? back : x)))
+      setAdded((a) => a.map((x) => (x.id === e.id ? { ...back, key: x.key } : x)))
       bumpTable()
     } catch (err) {
       toast.error((err as Error).message)
@@ -658,17 +660,21 @@ export function EntryDialog({
           </div>
           {!entry && added.length > 0 && (
             // What was added since the form opened, to change or take back at once.
-            <div className="border-t border-rule px-5 pt-2.5 pb-3">
+            <div className="msg-in border-t border-rule px-5 pt-2.5 pb-3">
               <div className="flex items-center gap-1.5 px-2 pb-1 text-[12px] text-ink-2" role="status">
-                <CheckIcon className="size-3.5 text-good" /> {t("Added")} · {added.filter((e) => !e.deleted).length}
+                <CheckIcon className="size-3.5 text-good" /> {t("Added")} · {added.filter((e) => !e.deleted && !e.leaving).length}
               </div>
               <ul className="max-h-[188px] overflow-y-auto">
                 {added.map((e) => (
-                  <li key={e.id} className={cn("flex h-9 items-center gap-2.5 rounded-[8px] px-2 text-[13.5px] hover:bg-wash", e.deleted && "text-muted-foreground line-through decoration-1")}>
-                    <span className="min-w-0 flex-1 truncate font-medium">{e.name}</span>
-                    {e.type && <Tag name={e.type} color={optionColor(options, "type", e.type)} className="!shadow-none !bg-transparent !px-0 text-[12.5px] text-ink-2 max-sm:hidden" />}
-                    <span className="text-[12.5px] text-ink-2 tabular-nums">{dateLabel(e.date, { month: "short", day: "numeric" })}</span>
-                    <span className={cn("w-24 text-right tabular-nums", e.amount < 0 && "text-red")}>{money(e.amount, ledger.currency)}</span>
+                  <li key={e.key} className={cn("row-in flex h-9 items-center gap-2.5 overflow-hidden rounded-[8px] px-2 text-[13.5px] transition-colors duration-300 hover:bg-wash", e.deleted && "struck text-muted-foreground", e.leaving && "row-out")}>
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      <span className="strike">{e.name}</span>
+                    </span>
+                    {e.type && <Tag name={e.type} color={optionColor(options, "type", e.type)} className="strike !shadow-none !bg-transparent !px-0 text-[12.5px] text-ink-2 max-sm:hidden" />}
+                    <span className="strike text-[12.5px] text-ink-2 tabular-nums">{dateLabel(e.date, { month: "short", day: "numeric" })}</span>
+                    <span className="w-24 text-right">
+                      <span className={cn("strike tabular-nums", e.amount < 0 && !e.deleted && "text-red")}>{money(e.amount, ledger.currency)}</span>
+                    </span>
                     {e.deleted ? (
                       <button type="button" className="flex h-7 w-[60px] shrink-0 items-center justify-center gap-1 rounded-md text-[12.5px] text-ink no-underline hover:bg-sheet" style={{ textDecoration: "none" }} aria-label={t("Undo deleting {name}", { name: e.name })} onClick={() => void restoreAdded(e)}>
                         <Undo2Icon className="size-3.5" /> {t("Undo")}
@@ -696,7 +702,11 @@ export function EntryDialog({
             onOpenChange={(o) => !o && setEditing(null)}
             onSaved={(saved) => {
               const was = editing
-              setAdded((a) => (saved ? a.map((x) => (x.id === saved.id ? saved : x)) : a.filter((x) => x.id !== was?.id)))
+              if (saved) setAdded((a) => a.map((x) => (x.id === saved.id ? { ...saved, key: x.key } : x)))
+              else if (was) {
+                setAdded((a) => a.map((x) => (x.id === was.id ? { ...x, leaving: true } : x)))
+                setTimeout(() => setAdded((a) => a.filter((x) => x.id !== was.id)), 200)
+              }
             }}
           />
         )}
