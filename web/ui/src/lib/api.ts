@@ -123,6 +123,9 @@ export interface Suggestion {
   amount: number
   date: string
   uses: number
+  /** Paid in another currency last time: what it was there. */
+  orig_amount?: number
+  orig_currency?: string
 }
 
 /** An entry's fields to set; an empty orig_currency clears what was paid elsewhere. */

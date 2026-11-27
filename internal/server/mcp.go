@@ -508,7 +508,8 @@ func (s *Server) newMCPServer(caller mcpCallerFunc, via string) *mcp.Server {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "suggest_entries",
-		Description: "Names used before that contain the query, one per name with how it was last entered (type, card, amount, date) " +
+		Description: "Names used before that contain the query, one per name with how it was last entered (type, card, amount, date, " +
+			"and orig_amount and orig_currency if it was paid in another currency) " +
 			"and how often. Use it to fill in what the user leaves out when adding something they've bought before.",
 		Annotations: &mcp.ToolAnnotations{Title: "Suggest entries", ReadOnlyHint: true, OpenWorldHint: &no},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in mcpSuggestIn) (*mcp.CallToolResult, mcpSuggestOut, error) {

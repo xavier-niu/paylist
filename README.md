@@ -38,7 +38,7 @@ Click a day, a type or a card to open its entries in a window, and click an entr
 
 One month as a table, edited in place, like a spreadsheet.
 
-- **Press N** anywhere to add an entry. **Shift+Enter** adds it, and the form stays open for the next one, listing those added so far to change or delete, and as you type a name it offers the ones you've used before (by pinyin too: "kf" finds 咖啡), filling in the type, card and last amount.
+- **Press N** anywhere to add an entry. **Shift+Enter** adds it, and the form stays open for the next one, listing those added so far to change or delete, and as you type a name it offers the ones you've used before (by pinyin too: "kf" finds 咖啡), filling in the type, card, currency and last amount.
 - **Press R** for a refund, filled in like a new entry. If a purchase from the last 120 days has the same name and amount, it is deleted (with Undo); if not, the refund is added as a negative amount.
 - **Paid in another currency?** Choose it at the bottom of the form and type the amount in it: Paylist shows what it comes to at that day's exchange rate, and saves that, in the ledger's currency, with what you paid beside it (US$12.50). Rates are the European Central Bank's, from [Frankfurter](https://frankfurter.dev), or for currencies it doesn't cover, today's from [ExchangeRate-API](https://www.exchangerate-api.com).
 - Click any cell to change it; Enter or Esc saves. Types and cards are colored options, found by name or pinyin; a new name is created once you confirm it.
@@ -83,7 +83,7 @@ claude mcp add --transport http paylist https://pay.example.com/mcp \
 | `delete_entries` | Delete entries by id |
 | `refund` | Record a refund the way the ledger's Refund form does: a purchase from the last 120 days with the same name and amount is deleted; with several, they come back to pick from; with none, the refund is added as a negative amount under the type, card and date given. Given a purchase's id and less than it cost, takes that part off it; `new` adds it as its own; a `currency` converts it |
 | `get_history` | An entry's history: who created and changed it, through what, and every change from what to what |
-| `suggest_entries` | Names used before that contain some text, with how each was last entered (type, card, amount), to fill in what the user leaves out |
+| `suggest_entries` | Names used before that contain some text, with how each was last entered (type, card, amount, currency), to fill in what the user leaves out |
 | `list_options` | The types and cards, in their order, with their colors, how many entries use each and when one last did |
 | `manage_option` | Create, rename, recolor, delete or reorder the types or cards; renaming carries through to every entry |
 | `get_stats` | A month's total, change from the same days of the month before and from the usual, daily totals, totals by type and by card, each type month by month, and the year against the last |

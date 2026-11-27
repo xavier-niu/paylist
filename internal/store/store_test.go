@@ -259,7 +259,11 @@ func TestSuggestEntries(t *testing.T) {
 	ctx := context.Background()
 	st, u := newStore(t)
 	L := personal(t, st, u)
+	usd, paid := "USD", 3.0
+	tokyo := entry("Tokyo coffee", "Food", 21.6, "2026-11-21", "Visa")
+	tokyo.OrigAmount, tokyo.OrigCurrency = &paid, &usd
 	if _, err := st.CreateEntries(ctx, L, []EntryInput{
+		tokyo,
 		entry("Iced coffee", "Food", 25, "2026-11-20", "Alipay"),
 		entry("Coffee", "Food", 18, "2026-11-01", "Cash"),
 		entry("coffee", "Food", 19.5, "2026-11-10", "Credit card"),
@@ -273,11 +277,15 @@ func TestSuggestEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	// "coffee" starts with the text and was entered twice, so it leads, with its latest entry.
-	if len(got) != 2 || got[0].Name != "coffee" || got[0].Uses != 2 || got[0].Amount != 19.5 || got[0].Card != "Credit card" || got[1].Name != "Iced coffee" {
+	if len(got) != 3 || got[0].Name != "coffee" || got[0].Uses != 2 || got[0].Amount != 19.5 || got[0].Card != "Credit card" || got[0].OrigCurrency != "" || got[1].Name != "Tokyo coffee" || got[2].Name != "Iced coffee" {
 		t.Errorf("suggestions: %+v", got)
 	}
+	// Paid in another currency: what it was there comes too.
+	if sg := got[1]; sg.OrigCurrency != "USD" || sg.OrigAmount == nil || *sg.OrigAmount != 3 || sg.Card != "Visa" {
+		t.Errorf("paid elsewhere: %+v", sg)
+	}
 	// No text: every name, most used first.
-	if all, _ := st.SuggestEntries(ctx, L, "  ", 100); len(all) != 3 || all[0].Name != "coffee" {
+	if all, _ := st.SuggestEntries(ctx, L, "  ", 100); len(all) != 4 || all[0].Name != "coffee" {
 		t.Errorf("blank text: %+v", all)
 	}
 }

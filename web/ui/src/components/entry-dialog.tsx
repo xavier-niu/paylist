@@ -168,11 +168,11 @@ export function EntryDialog({
   const pick = (sg: Suggestion) => {
     setName(sg.name)
     setType(sg.type)
-    // The card already chosen stays (entries come in a card's batches); none, and the one it was last paid with.
-    if (sg.card) setCard((c) => c || sg.card)
-    setAmount(sg.amount.toFixed(2))
-    // That amount is in the ledger's currency.
-    setCur(ledger.currency)
+    // Paid as it was last time: the same card, and in the same currency.
+    if (sg.card) setCard(sg.card)
+    const elsewhere = sg.orig_currency && sg.orig_amount != null
+    setAmount((elsewhere ? sg.orig_amount! : sg.amount).toFixed(2))
+    setCur(elsewhere ? sg.orig_currency! : ledger.currency)
     setSuggesting(false)
     requestAnimationFrame(() => {
       amountRef.current?.focus()

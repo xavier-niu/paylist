@@ -395,6 +395,9 @@ type Suggestion struct {
 	Amount float64 `json:"amount"` // the last amount
 	Date   string  `json:"date"`   // when it was last entered
 	Uses   int     `json:"uses"`   // how many entries have this name
+	// Paid in another currency last time: what it was there.
+	OrigAmount   *float64 `json:"orig_amount,omitempty"`
+	OrigCurrency string   `json:"orig_currency,omitempty"`
 }
 
 // SuggestEntries finds names containing q among past purchases (refunds
@@ -406,13 +409,13 @@ func (s *Store) SuggestEntries(ctx context.Context, ledgerID int64, q string, li
 	limit = min(max(limit, 1), 1000)
 	rows, err := s.db.QueryContext(ctx, `
 		WITH m AS (
-			SELECT name, type, card, amount, date,
+			SELECT name, type, card, amount, date, orig_amount, orig_currency,
 				COUNT(*) OVER (PARTITION BY lower(name)) AS uses,
 				ROW_NUMBER() OVER (PARTITION BY lower(name) ORDER BY date DESC, id DESC) AS rn
 			FROM entries
 			WHERE ledger_id = ? AND amount > 0 AND instr(lower(name), lower(?)) > 0
 		)
-		SELECT name, type, card, amount, date, uses FROM m WHERE rn = 1
+		SELECT name, type, card, amount, date, orig_amount, orig_currency, uses FROM m WHERE rn = 1
 		ORDER BY instr(lower(name), lower(?)) = 1 DESC, uses DESC, date DESC, name
 		LIMIT ?`, ledgerID, q, q, limit)
 	if err != nil {
@@ -423,10 +426,17 @@ func (s *Store) SuggestEntries(ctx context.Context, ledgerID int64, q string, li
 	for rows.Next() {
 		var sg Suggestion
 		var cents int64
-		if err := rows.Scan(&sg.Name, &sg.Type, &sg.Card, &cents, &sg.Date, &sg.Uses); err != nil {
+		var orig sql.NullInt64
+		if err := rows.Scan(&sg.Name, &sg.Type, &sg.Card, &cents, &sg.Date, &orig, &sg.OrigCurrency, &sg.Uses); err != nil {
 			return nil, err
 		}
 		sg.Amount = fromCents(cents)
+		if orig.Valid && sg.OrigCurrency != "" {
+			v := fromCents(orig.Int64)
+			sg.OrigAmount = &v
+		} else {
+			sg.OrigCurrency = ""
+		}
 		out = append(out, sg)
 	}
 	return out, rows.Err()
