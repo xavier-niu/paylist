@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { t } from "@/lib/i18n"
 
 /** Moves the focus to the next (or, with -1, the previous) field after el, within its window or the page. */
-function focusNext(el: HTMLElement, by: 1 | -1) {
+export function focusNext(el: HTMLElement, by: 1 | -1) {
   const scope = el.closest<HTMLElement>("[role=dialog]") ?? document.body
   const all = [...scope.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")].filter(
     (x) => x.offsetParent !== null || x === el,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { CalendarIcon, CheckIcon, ChevronDownCircleIcon, CoinsIcon, HashIcon, PencilIcon, PlusIcon, Trash2Icon, TypeIcon, Undo2Icon } from "lucide-react"
 import { toast } from "sonner"
 
+import { DatePicker } from "@/components/date-picker"
 import { EntryHistory } from "@/components/entry-history"
 import { ChoiceSelect, OptionSelect, Tag } from "@/components/option-select"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -563,7 +564,7 @@ export function EntryDialog({
             <div className={row}>
               <span className={name_}><CalendarIcon /> {t("Date")}</span>
               <span className="flex items-center gap-2">
-                <input id="entry-date" type="date" className="h-[34px] rounded-md bg-transparent px-2 text-[14px] tabular-nums outline-none hover:bg-wash focus:bg-wash" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label={t("Date")} />
+                <DatePicker value={date} onChange={setDate} label={t("Date")} className="h-[34px] rounded-md bg-transparent px-2 text-[14px] outline-none hover:bg-wash focus:bg-wash" />
                 {date !== today() && (
                   <button type="button" className="pill soft !h-7 !px-3 text-[13px]" onClick={() => setDate(today())}>
                     {t("Today")}

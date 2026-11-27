@@ -5,6 +5,7 @@
 import { useState, type ReactNode } from "react"
 import { ArrowUpDownIcon, CalendarIcon, CheckIcon, ChevronDownIcon, CreditCardIcon, HashIcon, PlusIcon, TagIcon, Trash2Icon, TypeIcon, type LucideIcon } from "lucide-react"
 
+import { DatePicker } from "@/components/date-picker"
 import { parseAmount } from "@/components/entry-dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { dateLabel, type Entry, type LedgerOrder, type Option } from "@/lib/api"
@@ -276,10 +277,10 @@ function FilterEditor({ filter: f, types, cards, month, onChange }: { filter: Fi
       return (
         <div className="grid gap-2 p-3">
           <Field label={t("From")}>
-            <input autoFocus type="date" min={first} max={last} className={cn(input, "tabular-nums")} value={f.from ?? ""} onChange={(e) => onChange({ from: e.target.value })} />
+            <DatePicker autoFocus clearable placeholder={t("Any day")} min={first} max={last} label={t("From")} className={input} value={f.from ?? ""} onChange={(d) => onChange({ from: d })} />
           </Field>
           <Field label={t("To")}>
-            <input type="date" min={first} max={last} className={cn(input, "tabular-nums")} value={f.to ?? ""} onChange={(e) => onChange({ to: e.target.value })} />
+            <DatePicker clearable placeholder={t("Any day")} min={first} max={last} label={t("To")} className={input} value={f.to ?? ""} onChange={(d) => onChange({ to: d })} />
           </Field>
         </div>
       )

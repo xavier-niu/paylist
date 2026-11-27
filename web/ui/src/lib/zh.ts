@@ -62,6 +62,7 @@ export const ZH: Record<string, string> = {
   "Cancel": "取消",
   "Delete": "删除",
   "Clear": "清除",
+  "Any day": "任意日期",
   "Filter": "筛选",
   "Filters": "筛选条件",
   "Sort": "排序",

@@ -3,6 +3,7 @@ import { ArrowUpDownIcon, DownloadIcon, EyeIcon, ListFilterIcon, EllipsisIcon, P
 import { toast } from "sonner"
 
 import { useConfirm } from "@/components/confirm"
+import { DatePicker } from "@/components/date-picker"
 import { parseAmount } from "@/components/entry-dialog"
 import { HistoryButton } from "@/components/entry-history"
 import { FilterLine, isActive, newFilter, passes, SortLine, ToolbarToggle, type Filter } from "@/components/ledger-filters"
@@ -83,24 +84,13 @@ function AmountCell({ value, onSave, label = t("Amount"), fit = false }: { value
   )
 }
 
-/** A date, "Nov 3 Tue" (faded when the row above has the same day); clicking opens the browser's date picker. */
+/** A date, "Nov 3 Tue" (faded when the row above has the same day); clicking opens a calendar. */
 function DateCell({ value, onChange, label = t("Date"), faded = false }: { value: string; onChange: (d: string) => void; label?: string; faded?: boolean }) {
-  const ref = useRef<HTMLInputElement>(null)
   return (
-    <label
-      className={cn("cell relative cursor-pointer gap-1.5 tabular-nums", faded && "opacity-45")}
-      onClick={() => {
-        try {
-          ref.current?.showPicker?.()
-        } catch {
-          /* the field still takes typing */
-        }
-      }}
-    >
+    <DatePicker value={value} onChange={onChange} label={label} className={cn("cell gap-1.5", faded && "opacity-45")}>
       <span>{dateLabel(value, { month: "short", day: "numeric" })}</span>
       <span className="text-[12px] text-muted-foreground">{dateLabel(value, { weekday: "short" })}</span>
-      <input ref={ref} type="date" aria-label={label} value={value} onChange={(e) => e.target.value && onChange(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
-    </label>
+    </DatePicker>
   )
 }
 
