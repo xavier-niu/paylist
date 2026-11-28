@@ -4,7 +4,7 @@ import { toast } from "sonner"
 
 import { DatePicker } from "@/components/date-picker"
 import { EntryHistory } from "@/components/entry-history"
-import { ChoiceSelect, OptionSelect, Tag } from "@/components/option-select"
+import { ChoiceSelect, focusField, OptionSelect, Tag } from "@/components/option-select"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
 import { api, currencySymbol, dateLabel, money, today, type Entry, type FxRate, type Suggestion } from "@/lib/api"
@@ -112,6 +112,8 @@ export function EntryDialog({
   const [pickedMatch, setPickedMatch] = useState(-1)
   // The purchase last picked from the list, kept picked as the list comes back for its amount.
   const keepRef = useRef<number | null>(null)
+  // Its row, focused when picked, goes while the list comes back: the focus goes back to it then.
+  const refocusRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -216,6 +218,23 @@ export function EntryDialog({
     }
   }
 
+  // ↑ and ↓ go from field to field, as Shift+Tab and Tab do: the name, the amount, the type, card,
+  // date and currency (reached so, a list stays closed until Enter or Space), and a refund's matching
+  // purchases. Not in a list that's open, nor in the name while it offers names, where they go round it.
+  const fieldsRef = useRef<HTMLDivElement>(null)
+  const onFieldsKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if ((e.key !== "ArrowDown" && e.key !== "ArrowUp") || e.nativeEvent.isComposing || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
+    if (e.target === nameRef.current && showSuggestions) return
+    const fields = [...fieldsRef.current!.querySelectorAll<HTMLElement>("input, [data-slot=popover-trigger]:not([disabled]), [role=option]:not([tabindex='-1'])")].filter((x) => x.offsetParent !== null)
+    const i = fields.indexOf(e.target as HTMLElement)
+    if (i < 0) return
+    // Handled here, before the field: the date's ↓ would open its calendar.
+    e.preventDefault()
+    e.stopPropagation()
+    const to = fields[i + (e.key === "ArrowDown" ? 1 : -1)]
+    if (to) focusField(to)
+  }
+
   const typed = parseAmount(amount)
   // A refund of one purchase picked in the table: no search, no other choices.
   const locked = refund && !!of
@@ -271,6 +290,13 @@ export function EntryDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, refund, matchKey])
   const matchesReady = locked || found?.key === matchKey
+  useEffect(() => {
+    const id = refocusRef.current
+    if (id === null || found?.key !== matchKey) return
+    refocusRef.current = null
+    fieldsRef.current?.querySelector<HTMLElement>(`[data-match="${id}"]`)?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [found])
   const matches = locked || !matchesReady ? [] : found!.matches
   // Opened for a purchase picked in the table, it's that one throughout, whatever the amount.
   const picked = locked ? of! : pickedMatch >= 0 ? matches[pickedMatch] : undefined
@@ -440,7 +466,7 @@ export function EntryDialog({
             </DialogTitle>
             <DialogDescription className="sr-only">{t("The entry's name, amount, type, card and date.")}</DialogDescription>
           </div>
-          <div className="grid gap-0.5 px-7 pt-2 pb-6">
+          <div ref={fieldsRef} className="grid gap-0.5 px-7 pt-2 pb-6" onKeyDownCapture={onFieldsKey}>
             <div className={cn(row, "relative")}>
               <span className={name_}><TypeIcon /> {t("Name")}</span>
               <span className={cn("flex items-center px-2", box)}>
@@ -606,12 +632,14 @@ export function EntryDialog({
                         type="button"
                         role="option"
                         aria-selected={on}
-                        onClick={() => {
+                        data-match={m.id}
+                        onClick={(e) => {
                           setPickedMatch(i)
                           // Found by how its amount starts (238 for 238.40): that was a search, so the refund is all of it.
                           const typedText = amount.trim()
                           if (!foreign && typedText && Math.round(m.amount * 100) !== Math.round(Math.abs(n) * 100) && m.amount.toFixed(2).startsWith(typedText)) {
                             keepRef.current = m.id
+                            if (document.activeElement === e.currentTarget) refocusRef.current = m.id
                             setAmount(m.amount.toFixed(2))
                           }
                         }}

@@ -19,6 +19,27 @@ export function focusNext(el: HTMLElement, by: 1 | -1) {
   all[i + by]?.focus()
 }
 
+// Set while focusField moves the focus: a dropdown reached so stays closed.
+let quiet = false
+
+/**
+ * Focuses a field without opening its list or calendar, as the arrow keys
+ * move between a form's fields: they'd go round the list instead of on. Enter
+ * or Space opens it. A text field's text is selected, as Tab does.
+ */
+export function focusField(el: HTMLElement) {
+  quiet = true
+  try {
+    el.focus()
+  } finally {
+    quiet = false
+  }
+  if (el instanceof HTMLInputElement) el.select()
+}
+
+/** Whether the focus is coming by focusField, so the field mustn't open. */
+export const focusingQuietly = () => quiet
+
 /** A type or card: its color's dot and its name, in an outlined pill. */
 export function Tag({ name, color, className }: { name: string; color: string; className?: string }) {
   return (
@@ -158,7 +179,7 @@ export function OptionSelect({
             aria-label={`${label}: ${value || t("none")}`}
             onFocus={(e) => {
               // Reached by keyboard (not a click, not the focus coming back from the list): open.
-              if (openOnFocus && !open && !justClosed.current && e.currentTarget.matches(":focus-visible")) {
+              if (openOnFocus && !open && !justClosed.current && !focusingQuietly() && e.currentTarget.matches(":focus-visible")) {
                 setActive(0)
                 setOpen(true)
               }
@@ -313,7 +334,7 @@ export function ChoiceSelect({
           className={className}
           aria-label={`${label}: ${value}`}
           onFocus={(e) => {
-            if (!open && !justClosed.current && e.currentTarget.matches(":focus-visible")) {
+            if (!open && !justClosed.current && !focusingQuietly() && e.currentTarget.matches(":focus-visible")) {
               setActive(Math.max(0, choices.indexOf(value)))
               setOpen(true)
             }

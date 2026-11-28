@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
 
-import { focusNext } from "@/components/option-select"
+import { focusingQuietly, focusNext } from "@/components/option-select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { dateLabel, monthLabel, shiftMonth, today } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -136,7 +136,7 @@ export function DatePicker({
           className={cn("text-left tabular-nums", className)}
           onFocus={(e) => {
             // Reached by keyboard (not a click, not the focus coming back from the calendar): open.
-            if (openOnFocus && !open && !justClosed.current && e.currentTarget.matches(":focus-visible")) show(true)
+            if (openOnFocus && !open && !justClosed.current && !focusingQuietly() && e.currentTarget.matches(":focus-visible")) show(true)
           }}
           onBlur={() => (justClosed.current = false)}
           onKeyDown={(e) => {
